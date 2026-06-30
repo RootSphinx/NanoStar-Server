@@ -3,69 +3,61 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NanoStar | 身份验证</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>NanoStar</title>
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
-    <div class="background-animation"></div>
-    
     <div class="glass-card">
         <div class="logo">NanoStar</div>
-        
-        <!-- 视图 1：主验证界面 -->
+
+        <!-- 视图 1：首页 -->
         <div id="view-verify" class="view-section active">
-            <h2>安全验证</h2>
-            <p>点击下方按钮核实您的位置以请求访问权限。</p>
-            <button id="btn-verify" class="glow-on-hover">获取权限</button>
+            <span class="cat-emoji">🐱</span>
+            <p>哇，你发现了一个神秘标记</p>
+            <button id="btn-verify" class="glow-on-hover">✨ 摸一下</button>
             <div id="loading-spinner" class="spinner hidden"></div>
             <p id="status-msg" class="status-text"></p>
         </div>
 
-        <!-- 视图 2：验证成功与评论界面 -->
+        <!-- 视图 2：点亮后 + 留言 -->
         <div id="view-comment" class="view-section hidden">
-            <div class="success-icon">✓</div>
-            <h2>验证通过</h2>
-            <p>系统已记录您的位置，机主已收到通知。</p>
+            <div class="success-icon">🌟</div>
+            <h2>已悄悄通知对方～</h2>
+            <p class="success-desc">对方知道有人路过啦</p>
 
-            <!-- 位置详情卡片 -->
+            <!-- 位置卡片 -->
             <div id="location-detail" class="location-detail" style="display:none">
                 <div id="gps-warning" class="gps-warning" style="display:none">
-                    ⚠️ 无GPS权限，当前位置基于IP网络定位，可能不准确
+                    ⚠️ 没有GPS权限，位置是个大概
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">📍 访客坐标</span>
-                    <span id="lbl-visitor-coord" class="detail-value"></span>
+                    <span class="detail-label">📍 你在这里</span>
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">🏠 访客地址</span>
-                    <span id="lbl-visitor-addr" class="detail-value"></span>
+                    <span class="detail-value" id="lbl-visitor-addr">就在附近呢～</span>
                 </div>
-                <div class="detail-row">
-                    <span class="detail-label">📱 设备坐标</span>
-                    <span id="lbl-device-coord" class="detail-value"></span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">🏢 设备地址</span>
-                    <span id="lbl-device-addr" class="detail-value"></span>
-                </div>
+                <!-- 以下元素为 JS 兼容保留，由 app.js 填充 -->
+                <span id="lbl-visitor-coord" style="display:none"></span>
+                <span id="lbl-device-coord" style="display:none"></span>
+                <span id="lbl-device-addr" style="display:none"></span>
             </div>
 
             <div class="comment-box">
-                <label for="visitor-comment">留个言吧（可选）：</label>
-                <textarea id="visitor-comment" rows="3" placeholder="你是谁？找我什么事？"></textarea>
-                <button id="btn-submit-comment" class="submit-btn">发送留言</button>
+                <label for="visitor-comment">想说点什么吗？（随便啦）</label>
+                <textarea id="visitor-comment" rows="3" placeholder="比如：路过打个卡～"></textarea>
+                <button id="btn-submit-comment" class="submit-btn">💬 发送</button>
             </div>
         </div>
 
-        <!-- 视图 3：全部完成界面 -->
+        <!-- 视图 3：完成 -->
         <div id="view-done" class="view-section hidden">
-            <h2>🎉 留言已发送</h2>
-            <p>感谢您的访问，您可以关闭此页面了。</p>
+            <h2>搞定啦</h2>
+            <p>你的信号已经发出去了 ✨<br>可以关掉这个页面啦</p>
+            <p class="done-footer">有缘还会再遇到的 👋</p>
         </div>
     </div>
 
-    <!-- 传入 Django 渲染的配置给 JS 使用 -->
     <script>
         const csrfToken = "{{ csrf_token }}";
         const ipApiConfig = {
