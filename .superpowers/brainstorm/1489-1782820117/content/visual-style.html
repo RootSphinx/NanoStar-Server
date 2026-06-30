@@ -1,0 +1,111 @@
+<h2>🎨 四种视觉风格 — 手机端预览</h2>
+<p class="subtitle">每张卡片模拟 375×667 手机屏幕。选择你最喜欢的风格方向（可多选）</p>
+
+<div class="cards" data-multiselect>
+
+  <!-- A: 马卡龙粉彩 -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#faf5ff;display:flex;justify-content:center;">
+      <div style="width:260px;height:460px;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(180,140,220,0.25);background:linear-gradient(180deg, #fce4ec 0%, #e8eaf6 40%, #e0f7fa 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;position:relative;">
+        <!-- 装饰 -->
+        <div style="position:absolute;top:20px;left:20px;font-size:28px;">🌸</div>
+        <div style="position:absolute;top:24px;right:20px;font-size:22px;">✨</div>
+        <div style="position:absolute;bottom:100px;left:16px;font-size:20px;">🫧</div>
+        <div style="position:absolute;bottom:140px;right:24px;font-size:18px;">💫</div>
+        <!-- Logo -->
+        <div style="font-size:22px;font-weight:700;color:#c084d8;letter-spacing:1px;margin-bottom:4px;">NanoStar</div>
+        <div style="font-size:11px;color:#b39ddb;margin-bottom:24px;">有人在看你哦～</div>
+        <!-- 主文案 -->
+        <div style="text-align:center;margin-bottom:20px;padding:0 28px;">
+          <p style="font-size:14px;color:#7e57c2;margin:0;line-height:1.5;">你扫描了一个神秘标记 ✦<br>点一下，发生点什么？</p>
+        </div>
+        <!-- 按钮 -->
+        <button style="width:76%;padding:14px;border:none;border-radius:30px;background:linear-gradient(135deg, #e1bee7, #b3e5fc);color:#6a1b9a;font-size:15px;font-weight:600;box-shadow:0 4px 16px rgba(180,140,220,0.35);cursor:pointer;letter-spacing:0.5px;">🔮 点我试试</button>
+        <div style="font-size:10px;color:#b39ddb;margin-top:12px;">不会留下痕迹的放心～</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · 马卡龙粉彩</h3>
+      <p>粉紫+薄荷渐变，软萌手绘风，柔和梦幻</p>
+    </div>
+  </div>
+
+  <!-- B: 日系暖调 -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#fffbf0;display:flex;justify-content:center;">
+      <div style="width:260px;height:460px;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(200,160,120,0.2);background:#fffef9;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;border:1px solid #f0e6d2;position:relative;">
+        <!-- 顶栏 -->
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg, #f8b500, #f57c00, #e65100);"></div>
+        <!-- 装饰 -->
+        <div style="font-size:36px;margin-bottom:8px;">🐱</div>
+        <!-- Logo -->
+        <div style="font-size:20px;font-weight:700;color:#e65100;letter-spacing:1px;margin-bottom:2px;">NanoStar</div>
+        <div style="font-size:11px;color:#bf8040;margin-bottom:20px;">近くにいるよ</div>
+        <!-- 插图占位 -->
+        <div style="width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg, #fff3e0, #ffe0b2);display:flex;align-items:center;justify-content:center;margin-bottom:16px;font-size:40px;">📍</div>
+        <!-- 文案 -->
+        <div style="text-align:center;margin-bottom:20px;padding:0 28px;">
+          <p style="font-size:13px;color:#795548;margin:0;line-height:1.5;">あれ？<br>这个标记的主人<br>就在附近哦</p>
+        </div>
+        <!-- 按钮 -->
+        <button style="width:72%;padding:13px;border:2px solid #ff8a65;border-radius:28px;background:#fff;color:#e64a19;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(255,138,101,0.2);cursor:pointer;">👋 打个招呼</button>
+        <div style="font-size:10px;color:#bcaaa4;margin-top:12px;">そっと気づかせるだけ</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B · 日系暖调</h3>
+      <p>米白底+暖橘，像 LINE 好友互动，小巧温暖</p>
+    </div>
+  </div>
+
+  <!-- C: 彩虹糖果 -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f0f0f0;display:flex;justify-content:center;">
+      <div style="width:260px;height:460px;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.15);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;position:relative;border:3px solid transparent;background-clip:padding-box;">
+        <!-- 彩虹边框 -->
+        <div style="position:absolute;inset:-3px;border-radius:22px;background:linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #ff6bd6);z-index:-1;"></div>
+        <div style="position:absolute;inset:0;border-radius:20px;background:#fff;z-index:-1;margin:0;"></div>
+        <!-- 装饰 -->
+        <div style="font-size:24px;margin-bottom:4px;">🌈</div>
+        <!-- Logo -->
+        <div style="font-size:24px;font-weight:800;background:linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:4px;">NanoStar</div>
+        <div style="font-size:11px;color:#999;margin-bottom:20px;">✨ spotted you ✨</div>
+        <!-- 文案 -->
+        <div style="text-align:center;margin-bottom:18px;padding:0 24px;">
+          <p style="font-size:14px;color:#555;margin:0;line-height:1.5;">叮！你发现了一颗<br><span style="font-size:16px;">🌟 隐藏小星星 🌟</span></p>
+        </div>
+        <!-- 按钮 -->
+        <button style="width:74%;padding:14px;border:none;border-radius:30px;background:linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff);color:#fff;font-size:15px;font-weight:700;box-shadow:0 4px 20px rgba(255,107,107,0.4);cursor:pointer;letter-spacing:1px;">⭐ 戳一下！</button>
+        <div style="font-size:10px;color:#aaa;margin-top:12px;">(☞ﾟヮﾟ)☞ 点就对了</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C · 彩虹糖果</h3>
+      <p>多彩碰撞+卡通感，活泼夸张，像游戏彩蛋</p>
+    </div>
+  </div>
+
+  <!-- D: 奶油极简 -->
+  <div class="card" data-choice="d" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#faf8f5;display:flex;justify-content:center;">
+      <div style="width:260px;height:460px;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);background:linear-gradient(180deg, #fffefb 0%, #fdf6f0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;position:relative;">
+        <!-- Logo -->
+        <div style="font-size:20px;font-weight:600;color:#d4a574;letter-spacing:3px;margin-bottom:32px;text-transform:lowercase;">nanostar</div>
+        <!-- 圆形装饰 -->
+        <div style="width:80px;height:80px;border-radius:50%;background:#fef0e4;display:flex;align-items:center;justify-content:center;margin-bottom:24px;font-size:36px;">🐾</div>
+        <!-- 文案 -->
+        <div style="text-align:center;margin-bottom:28px;padding:0 32px;">
+          <p style="font-size:15px;color:#8d6e63;margin:0;line-height:1.6;font-weight:400;">咦，你也在这里呀</p>
+        </div>
+        <!-- 按钮 -->
+        <button style="width:70%;padding:14px;border:none;border-radius:26px;background:#f5d5b8;color:#8d6e63;font-size:14px;font-weight:600;box-shadow:0 2px 12px rgba(180,140,110,0.2);cursor:pointer;">轻轻戳一下</button>
+        <div style="font-size:10px;color:#c9b99a;margin-top:14px;">— 不会打扰任何人 —</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>D · 奶油极简</h3>
+      <p>淡奶油色+一点暖棕，干净有温度，不吵闹</p>
+    </div>
+  </div>
+
+</div>

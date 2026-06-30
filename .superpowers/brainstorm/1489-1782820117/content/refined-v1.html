@@ -1,0 +1,98 @@
+<h2>🐱 粉暖猫猫 — 精修版</h2>
+<p class="subtitle">A的粉紫配色 + B的日系语气 + 🐱 主角。三个文案方向，注意没有"主人""藏"等表述</p>
+
+<div class="cards" data-multiselect>
+
+  <!-- 版本1: 有人关注 -->
+  <div class="card" data-choice="v1" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#faf5ff;display:flex;justify-content:center;">
+      <div style="width:280px;height:500px;border-radius:24px;overflow:hidden;box-shadow:0 6px 30px rgba(180,140,220,0.25);background:linear-gradient(175deg, #fdf2f8 0%, #fce4ec 40%, #e8eaf6 85%, #e0f7fa 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;position:relative;border:1px solid rgba(225,190,231,0.25);">
+        <!-- 顶部横条 -->
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg, #ce93d8, #f48fb1, #80deea);"></div>
+        <!-- 装饰浮点 -->
+        <div style="position:absolute;top:32px;right:24px;font-size:16px;opacity:0.5;">🌸</div>
+        <div style="position:absolute;bottom:120px;left:20px;font-size:18px;opacity:0.4;">🫧</div>
+        <div style="position:absolute;top:100px;left:24px;font-size:12px;opacity:0.35;">✨</div>
+        <!-- 主角猫 -->
+        <div style="font-size:46px;margin-bottom:4px;filter:drop-shadow(0 2px 4px rgba(180,140,220,0.3));">🐱</div>
+        <!-- 品牌 -->
+        <div style="font-size:13px;font-weight:700;color:#c084d8;letter-spacing:2.5px;margin-bottom:18px;">NanoStar</div>
+        <!-- 文案 -->
+        <div style="text-align:center;margin-bottom:26px;padding:0 32px;">
+          <p style="font-size:14px;color:#6d4c41;margin:0;line-height:1.7;">
+            あのね…<br>
+            有人正在看着<br>这颗小星星哦 🌟
+          </p>
+        </div>
+        <!-- 按钮 -->
+        <button style="width:70%;padding:14px;border:none;border-radius:30px;background:linear-gradient(135deg, #e1bee7, #b3e5fc);color:#6a1b9a;font-size:15px;font-weight:600;box-shadow:0 4px 20px rgba(180,140,220,0.35);cursor:pointer;letter-spacing:0.5px;">🔮 点一下看看</button>
+        <!-- 脚注 -->
+        <div style="font-size:10px;color:#b39ddb;margin-top:14px;">そっと知らせるだけ · 轻轻告诉对方</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>① 有人关注</h3>
+      <p>"有人正在看着这颗小星星" — 俏皮暗示，不说破谁在看</p>
+    </div>
+  </div>
+
+  <!-- 版本2: 打个招呼 -->
+  <div class="card" data-choice="v2" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#faf5ff;display:flex;justify-content:center;">
+      <div style="width:280px;height:500px;border-radius:24px;overflow:hidden;box-shadow:0 6px 30px rgba(180,140,220,0.25);background:linear-gradient(175deg, #fdf2f8 0%, #fce4ec 40%, #e8eaf6 85%, #e0f7fa 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;position:relative;border:1px solid rgba(225,190,231,0.25);">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg, #ce93d8, #f48fb1, #80deea);"></div>
+        <div style="position:absolute;top:28px;right:26px;font-size:15px;opacity:0.5;">💫</div>
+        <div style="position:absolute;bottom:100px;right:20px;font-size:16px;opacity:0.4;">🌿</div>
+        <div style="position:absolute;top:90px;left:22px;font-size:12px;opacity:0.35;">🫧</div>
+        <!-- 主角猫 -->
+        <div style="font-size:44px;margin-bottom:4px;">🐱</div>
+        <div style="font-size:13px;font-weight:700;color:#c084d8;letter-spacing:2.5px;margin-bottom:18px;">NanoStar</div>
+        <!-- 文案 -->
+        <div style="text-align:center;margin-bottom:26px;padding:0 32px;">
+          <p style="font-size:14px;color:#6d4c41;margin:0;line-height:1.7;">
+            やあ！<br>
+            この星を見つけたね<br>
+            君も仲間だ ✦
+          </p>
+        </div>
+        <!-- 按钮 -->
+        <button style="width:70%;padding:14px;border:none;border-radius:30px;background:linear-gradient(135deg, #e1bee7, #b3e5fc);color:#6a1b9a;font-size:15px;font-weight:600;box-shadow:0 4px 20px rgba(180,140,220,0.35);cursor:pointer;letter-spacing:0.5px;">👋 打个招呼吧</button>
+        <div style="font-size:10px;color:#b39ddb;margin-top:14px;">気づいたよ · 注意到你了</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>② 打个招呼</h3>
+      <p>"这颗星星被你找到了" — 日系友好，像发现同好</p>
+    </div>
+  </div>
+
+  <!-- 版本3: 路过打卡 -->
+  <div class="card" data-choice="v3" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#faf5ff;display:flex;justify-content:center;">
+      <div style="width:280px;height:500px;border-radius:24px;overflow:hidden;box-shadow:0 6px 30px rgba(180,140,220,0.25);background:linear-gradient(175deg, #fdf2f8 0%, #fce4ec 40%, #e8eaf6 85%, #e0f7fa 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;position:relative;border:1px solid rgba(225,190,231,0.25);">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg, #ce93d8, #f48fb1, #80deea);"></div>
+        <div style="position:absolute;top:36px;right:20px;font-size:14px;opacity:0.45;">🎀</div>
+        <div style="position:absolute;bottom:130px;left:18px;font-size:15px;opacity:0.35;">💭</div>
+        <!-- 主角猫 -->
+        <div style="font-size:46px;margin-bottom:4px;">🐱</div>
+        <div style="font-size:13px;font-weight:700;color:#c084d8;letter-spacing:2.5px;margin-bottom:18px;">NanoStar</div>
+        <!-- 文案 -->
+        <div style="text-align:center;margin-bottom:26px;padding:0 32px;">
+          <p style="font-size:14px;color:#6d4c41;margin:0;line-height:1.7;">
+            ねえねえ<br>
+            あなたの足跡、<br>
+            ここに残してみない？
+          </p>
+        </div>
+        <!-- 按钮 -->
+        <button style="width:70%;padding:14px;border:none;border-radius:30px;background:linear-gradient(135deg, #e1bee7, #b3e5fc);color:#6a1b9a;font-size:15px;font-weight:600;box-shadow:0 4px 20px rgba(180,140,220,0.35);cursor:pointer;letter-spacing:0.5px;">🐾 留下足迹</button>
+        <div style="font-size:10px;color:#b39ddb;margin-top:14px;">足跡を残そう · 悄悄打卡</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>③ 路过打卡</h3>
+      <p>"要不要在这里留下足迹？" — 轻量签到感，互动自然</p>
+    </div>
+  </div>
+
+</div>

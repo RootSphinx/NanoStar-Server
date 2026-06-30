@@ -171,12 +171,12 @@ async def verify_visitor_click(request):
     # 4. 动态查找在线设备并发送索要位置的指令
     online_device = await _get_online_device_id()
     if not online_device:
-        return JsonResponse({"status": "fail", "msg": "机主设备离线，请稍后再试"})
+        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~"})
 
     sent_success = await send_to_device_async(online_device, payload)
 
     if not sent_success:
-        return JsonResponse({"status": "fail", "msg": "机主设备离线，请稍后再试"})
+        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~"})
         
     # 5. 指令已发出，将请求挂起，循环等待手机把结果写进 Redis
     timeout_seconds = 10
