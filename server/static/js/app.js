@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnVerify.classList.add('hidden');
         spinner.classList.remove('hidden');
         statusMsg.style.color = 'var(--text-muted)';
-        statusMsg.innerText = '正在获取位置授权...';
+        statusMsg.innerText = '正在寻找信号...';
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 async (error) => {
                     console.warn("GPS denied:", error);
-                    statusMsg.innerText = '⚠️ 无GPS权限，使用网络定位（位置可能不准确）...';
+                    statusMsg.innerText = '⚠️ 没拿到GPS，用网络定位凑合一下...';
                     statusMsg.style.color = '#E8BF6A';
                     const ipLoc = await getIpLocation();
                     isIpFallback = true;
@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { enableHighAccuracy: true, timeout: 8000 }
             );
         } else {
-            statusMsg.innerText = '⚠️ 设备不支持GPS，使用网络定位（位置可能不准确）...';
+            statusMsg.innerText = '⚠️ 设备不支持GPS，用网络定位大概看一下...';
             statusMsg.style.color = '#E8BF6A';
             getIpLocation().then(ipLoc => {
                 isIpFallback = true;
@@ -75,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function sendVerification(lat, lng) {
-        statusMsg.innerText = '正在呼叫机主并核对位置...';
+        statusMsg.innerText = '正在发送信号...';
         const [clientIp] = await Promise.all([getPublicIp()]);
         try {
             const payload = { latitude: lat, longitude: lng };
@@ -105,23 +105,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!card) return;
         card.style.display = 'block';
 
-        // 访客坐标（IP定位时标注提示）
-        const visitorCoordEl = document.getElementById('lbl-visitor-coord');
-        const vLat = data.visitor_latitude;
-        const vLng = data.visitor_longitude;
-        let coordText = (vLat != null && vLng != null) ? `${vLat.toFixed(6)}, ${vLng.toFixed(6)}` : '未获取';
+        // 访客地址
+        const addrEl = document.getElementById('lbl-visitor-addr');
+        if (addrEl) {
+            addrEl.textContent = data.visitor_address || '就在附近呢～';
+        }
+
+        // GPS 降级警告
         if (data.location_source === 'ip_fallback') {
-            coordText += ' (IP定位)';
             const warnEl = document.getElementById('gps-warning');
             if (warnEl) warnEl.style.display = 'block';
         }
-        visitorCoordEl.textContent = coordText;
-
-        document.getElementById('lbl-visitor-addr').textContent = data.visitor_address || '解析中...';
-        const dLat = data.device_latitude;
-        const dLng = data.device_longitude;
-        document.getElementById('lbl-device-coord').textContent = (dLat != null && dLng != null) ? `${dLat.toFixed(6)}, ${dLng.toFixed(6)}` : '未获取';
-        document.getElementById('lbl-device-addr').textContent = data.device_address || '解析中...';
     }
 
     function showError(msg) {
