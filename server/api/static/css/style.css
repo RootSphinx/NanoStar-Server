@@ -143,14 +143,6 @@ body::before {
     100% { transform: scale(1); }
 }
 
-/* 成功标题 */
-.success-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: #6a1b9a;
-    margin: 0 0 6px 0;
-}
-
 .success-desc {
     font-size: 13px;
     color: var(--text-sub);
