@@ -3,6 +3,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnVerify = document.getElementById('btn-verify');
     const spinner = document.getElementById('loading-spinner');
     const statusMsg = document.getElementById('status-msg');
+    const commentTitle = document.getElementById('comment-title');
+    const commentSubtitle = document.getElementById('comment-subtitle');
+    const commentForm = document.getElementById('comment-form');
+    const visitCountEl = document.getElementById('visit-count');
+    const pastCommentsEl = document.getElementById('past-comments');
+    const pastCommentsList = document.getElementById('past-comments-list');
 
     const switchView = (hideId, showId) => {
         const hideEl = document.getElementById(hideId);
@@ -19,8 +25,103 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentRequestId = null;
     let isIpFallback = false;
+    let visitorFingerprint = '';
+    let maxComments = 3;
+
+    // 页面加载后自动初始化指纹并检查 session
+    initFingerprint()
+        .then(fp => {
+            visitorFingerprint = fp;
+            checkSession();
+        })
+        .catch(err => {
+            console.warn('FingerprintJS 初始化失败，使用兜底指纹:', err);
+            visitorFingerprint = generateFallbackFingerprint();
+            checkSession();
+        });
 
     btnVerify.addEventListener('click', () => {
+        startVerification();
+    });
+
+    async function initFingerprint() {
+        const fp = await FingerprintJS.load();
+        const result = await fp.get();
+        return result.visitorId;
+    }
+
+    function generateFallbackFingerprint() {
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillText('NanoStar fingerprint fallback', 2, 2);
+            const canvasData = canvas.toDataURL();
+            const raw = navigator.userAgent + '|' + navigator.language + '|' + screen.colorDepth + '|' + canvasData;
+            let hash = 0;
+            for (let i = 0; i < raw.length; i++) {
+                const char = raw.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return 'fb_' + Math.abs(hash).toString(16);
+        } catch (e) {
+            return 'fb_' + Date.now().toString(16);
+        }
+    }
+
+    async function checkSession() {
+        try {
+            const response = await fetch('/api/visitor/session/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': typeof csrfToken !== 'undefined' ? csrfToken : '' },
+                body: JSON.stringify({ fingerprint: visitorFingerprint })
+            });
+            const data = await response.json();
+            if (response.ok && data.has_session) {
+                currentRequestId = data.request_id;
+                maxComments = data.max_comments || 3;
+                showLocationDetail(data);
+                handleExistingSession(data);
+            } else {
+                showVerifyButton();
+            }
+        } catch (err) {
+            console.error('检查 session 失败:', err);
+            showVerifyButton();
+        }
+    }
+
+    function showVerifyButton() {
+        spinner.classList.add('hidden');
+        btnVerify.classList.remove('hidden');
+        statusMsg.innerText = '';
+    }
+
+    function handleExistingSession(data) {
+        const recordStatus = data.status || 'existing';
+        if (recordStatus === 'existing') {
+            setCommentTitle('你已经触发过一次啦，是还想再说点什么吗？', '之前的内容都还在呢');
+            hideVisitCount();
+            showCommentForm();
+            renderPastComments(data.past_comments || []);
+            resetCommentForm();
+            switchView('view-verify', 'view-comment');
+        } else if (recordStatus === 'full') {
+            setCommentTitle('已经收到你的留言啦，更多的话留到下次相遇吧！', '可以先休息一会儿');
+            hideVisitCount();
+            hideCommentForm();
+            renderPastComments(data.past_comments || []);
+            switchView('view-verify', 'view-comment');
+        } else {
+            showVerifyButton();
+        }
+    }
+
+    function startVerification() {
+        const catEmoji = document.getElementById('cat-emoji');
+        if (catEmoji) catEmoji.innerText = '🐱';
         btnVerify.classList.add('hidden');
         spinner.classList.remove('hidden');
         statusMsg.style.color = 'var(--text-muted)';
@@ -49,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sendVerification(ipLoc.lat, ipLoc.lng);
             });
         }
-    });
+    }
 
     // 通过 uapis.cn 获取真实公网 IP（配置由 Django 模板注入）
     async function getPublicIp() {
@@ -78,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusMsg.innerText = '正在发送信号...';
         const [clientIp] = await Promise.all([getPublicIp()]);
         try {
-            const payload = { latitude: lat, longitude: lng };
+            const payload = { latitude: lat, longitude: lng, fingerprint: visitorFingerprint };
             if (clientIp) payload.client_ip = clientIp;
             if (isIpFallback) payload.location_source = 'ip_fallback';
             const response = await fetch('/api/visitor/verify/', {
@@ -89,8 +190,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             if (response.ok && data.status === 'success') {
                 currentRequestId = data.request_id;
+                maxComments = data.max_comments || 3;
                 showLocationDetail(data);
-                switchView('view-verify', 'view-comment');
+                handleVerifySuccess(data);
             } else {
                 showError(data.msg || '验证失败，请重试。');
             }
@@ -98,6 +200,127 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("请求失败:", err);
             showError('通讯失败，请按 F12 查看控制台报错。');
         }
+    }
+
+    function handleVerifySuccess(data) {
+        const recordStatus = data.record_status || 'new';
+
+        if (recordStatus === 'new') {
+            setCommentTitle('已悄悄通知对方～', '对方知道有人路过啦');
+            showVisitCount(data.visit_count);
+            showCommentForm();
+            clearPastComments();
+            resetCommentForm();
+            switchView('view-verify', 'view-comment');
+        } else if (recordStatus === 'existing') {
+            setCommentTitle('你已经触发过一次啦，是还想再说点什么吗？', '之前的内容都还在呢');
+            hideVisitCount();
+            showCommentForm();
+            renderPastComments(data.past_comments || []);
+            resetCommentForm();
+            switchView('view-verify', 'view-comment');
+        } else if (recordStatus === 'full') {
+            setCommentTitle('已经收到你的留言啦，更多的话留到下次相遇吧！', '可以先休息一会儿');
+            hideVisitCount();
+            hideCommentForm();
+            renderPastComments(data.past_comments || []);
+            switchView('view-verify', 'view-comment');
+        }
+    }
+
+    function setCommentTitle(title, subtitle) {
+        if (commentTitle) commentTitle.textContent = title;
+        if (commentSubtitle) commentSubtitle.textContent = subtitle || '';
+    }
+
+    function showVisitCount(count) {
+        if (!visitCountEl) return;
+        visitCountEl.textContent = `这是你第 ${count || 1} 次成功访问`;
+        visitCountEl.classList.remove('hidden');
+    }
+
+    function hideVisitCount() {
+        if (visitCountEl) visitCountEl.classList.add('hidden');
+    }
+
+    function showCommentForm() {
+        if (commentForm) commentForm.style.display = 'block';
+    }
+
+    function hideCommentForm() {
+        if (commentForm) commentForm.style.display = 'none';
+    }
+
+    function resetCommentForm() {
+        const textarea = document.getElementById('visitor-comment');
+        if (textarea) textarea.value = '';
+        const btn = document.getElementById('btn-submit-comment');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = '💬 发送';
+        }
+    }
+
+    function clearPastComments() {
+        if (pastCommentsEl) pastCommentsEl.classList.add('hidden');
+        if (pastCommentsList) pastCommentsList.innerHTML = '';
+    }
+
+    function renderPastComments(comments) {
+        if (!pastCommentsList || !pastCommentsEl) return;
+        pastCommentsList.innerHTML = '';
+        if (!comments || comments.length === 0) {
+            pastCommentsEl.classList.add('hidden');
+            return;
+        }
+        comments.forEach(c => {
+            const li = document.createElement('li');
+            li.className = 'past-comment-item';
+            const content = document.createElement('div');
+            content.className = 'past-comment-content';
+            content.textContent = c.content;
+            const time = document.createElement('div');
+            time.className = 'past-comment-time';
+            time.textContent = formatCommentTime(c.created_at || c.timestamp);
+            li.appendChild(content);
+            li.appendChild(time);
+            pastCommentsList.appendChild(li);
+        });
+        pastCommentsEl.classList.remove('hidden');
+    }
+
+    function formatCommentTime(value) {
+        if (!value) return '';
+        try {
+            const d = new Date(value);
+            if (isNaN(d.getTime())) {
+                // 尝试毫秒时间戳
+                const d2 = new Date(Number(value));
+                if (!isNaN(d2.getTime())) {
+                    return d2.toLocaleString('zh-CN');
+                }
+                return '';
+            }
+            return d.toLocaleString('zh-CN');
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function appendComment(comment) {
+        if (!comment || !pastCommentsList || !pastCommentsEl) return;
+        const li = document.createElement('li');
+        li.className = 'past-comment-item';
+        const content = document.createElement('div');
+        content.className = 'past-comment-content';
+        content.textContent = comment.content;
+        const time = document.createElement('div');
+        time.className = 'past-comment-time';
+        time.textContent = formatCommentTime(comment.created_at || comment.timestamp);
+        li.appendChild(content);
+        li.appendChild(time);
+        pastCommentsList.appendChild(li);
+        pastCommentsEl.classList.remove('hidden');
     }
 
     function showLocationDetail(data) {
@@ -119,6 +342,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showError(msg) {
+        const catEmoji = document.getElementById('cat-emoji');
+        if (catEmoji) catEmoji.innerText = '😭';
         spinner.classList.add('hidden');
         btnVerify.classList.remove('hidden');
         statusMsg.style.color = '#ff5252';
@@ -126,19 +351,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const btnSubmitComment = document.getElementById('btn-submit-comment');
+    const doneBlankNote = document.getElementById('done-blank-note');
+    const doneNormalFooter = document.getElementById('done-normal-footer');
+
+    function setDonePage(isBlank) {
+        if (doneBlankNote) {
+            doneBlankNote.classList.toggle('hidden', !isBlank);
+        }
+        if (doneNormalFooter) {
+            doneNormalFooter.classList.toggle('hidden', isBlank);
+        }
+    }
+
     if (btnSubmitComment) {
         btnSubmitComment.addEventListener('click', async () => {
             const commentTxt = document.getElementById('visitor-comment').value;
+            const isBlankComment = !commentTxt || !commentTxt.trim();
             const origText = btnSubmitComment.innerText;
             btnSubmitComment.innerText = '发送中...';
             btnSubmitComment.disabled = true;
             try {
-                await fetch('/api/visitor/comment/', {
+                const resp = await fetch('/api/visitor/comment/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': typeof csrfToken !== 'undefined' ? csrfToken : '' },
                     body: JSON.stringify({ request_id: currentRequestId, comment: commentTxt })
                 });
-                switchView('view-comment', 'view-done');
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    if (!data.is_blank && data.comment) {
+                        appendComment(data.comment);
+                    }
+                    const currentCount = pastCommentsList ? pastCommentsList.children.length : 0;
+                    if (!data.is_blank && currentCount >= maxComments) {
+                        hideCommentForm();
+                        setCommentTitle('已经收到你的留言啦，更多的话留到下次相遇吧！', '可以先休息一会儿');
+                    }
+                    setDonePage(data.is_blank);
+                    switchView('view-comment', 'view-done');
+                } else {
+                    alert(data.msg || '留言发送失败。');
+                    btnSubmitComment.innerText = origText;
+                    btnSubmitComment.disabled = false;
+                }
             } catch (err) {
                 alert("留言发送失败。");
                 btnSubmitComment.innerText = origText;

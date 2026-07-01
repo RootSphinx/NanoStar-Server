@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>NanoStar</title>
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="icon" type="image/x-icon" href="{% static 'favicon.ico' %}">
 </head>
 <body>
     <div class="glass-card">
@@ -13,7 +14,7 @@
 
         <!-- 视图 1：首页 -->
         <div id="view-verify" class="view-section active">
-            <span class="cat-emoji">🐱</span>
+            <span id="cat-emoji" class="cat-emoji">🐱</span>
             <p>哇，你发现了一个神秘标记</p>
             <button id="btn-verify" class="glow-on-hover">✨ 摸一下</button>
             <div id="loading-spinner" class="spinner hidden"></div>
@@ -23,13 +24,16 @@
         <!-- 视图 2：点亮后 + 留言 -->
         <div id="view-comment" class="view-section hidden">
             <div class="success-icon">🌟</div>
-            <h2>已悄悄通知对方～</h2>
-            <p class="success-desc">对方知道有人路过啦</p>
+            <h2 id="comment-title">已悄悄通知对方～</h2>
+            <p class="success-desc" id="comment-subtitle">对方知道有人路过啦</p>
+
+            <!-- 访问次数 -->
+            <div id="visit-count" class="visit-count hidden"></div>
 
             <!-- 位置卡片 -->
             <div id="location-detail" class="location-detail" style="display:none">
                 <div id="gps-warning" class="gps-warning" style="display:none">
-                    ⚠️ 没有GPS权限，位置是个大概
+                    ⚠️ 没有GPS权限，位置是个大概,可以打开GPS再试一次?
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">📍 你在这里</span>
@@ -39,7 +43,13 @@
                 </div>
             </div>
 
-            <div class="comment-box">
+            <!-- 历史评论列表 -->
+            <div id="past-comments" class="past-comments hidden">
+                <div class="past-comments-title">之前的留言</div>
+                <ul id="past-comments-list"></ul>
+            </div>
+
+            <div id="comment-form" class="comment-box">
                 <label for="visitor-comment">想说点什么吗？（随便啦）</label>
                 <textarea id="visitor-comment" rows="3" placeholder="比如：路过打个卡～"></textarea>
                 <button id="btn-submit-comment" class="submit-btn">💬 发送</button>
@@ -50,7 +60,8 @@
         <div id="view-done" class="view-section hidden">
             <h2>搞定啦</h2>
             <p>你的信号已经发出去了 ✨<br>可以关掉这个页面啦</p>
-            <p class="done-footer">有缘还会再遇到的 👋</p>
+            <p id="done-blank-note" class="done-footer hidden">虽然你什么也没说吧。🤫</p>
+            <p id="done-normal-footer" class="done-footer">有缘还会再遇到的 👋</p>
         </div>
     </div>
 
@@ -61,6 +72,7 @@
             key: "{{ ip_api_key }}"
         };
     </script>
+    <script src="{% static 'js/fp.min.js' %}"></script>
     <script src="{% static 'js/app.js' %}"></script>
 </body>
 </html>

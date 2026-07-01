@@ -10,10 +10,12 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.cache import cache
 from django.conf import settings
+from django.utils import timezone
+from datetime import timedelta
 from channels.db import database_sync_to_async
 from geopy.distance import distance as geopy_distance
 
-from core.models import Device, AppConfig, VisitorRecord
+from core.models import Device, AppConfig, VisitorRecord, Fingerprint, Comment
 from ws_gateway.command_sender import send_to_device_async
 from ws_gateway.action_router import router
 
@@ -102,18 +104,50 @@ def _get_latest_config():
 
 
 @database_sync_to_async
-def _create_visitor_record(request_id, ip_address, distance, timestamp, is_success, comment, module,
+def _get_or_create_fingerprint(visitor_id):
+    """根据指纹字符串查询或创建 Fingerprint，并更新最近出现时间"""
+    if not visitor_id:
+        return None
+    fingerprint, created = Fingerprint.objects.get_or_create(visitor_fingerprint=visitor_id)
+    if not created:
+        fingerprint.save(update_fields=['last_seen'])
+    return fingerprint
+
+
+@database_sync_to_async
+def _get_latest_record_by_fingerprint(fingerprint_id, cooldown_minutes):
+    """查询指纹在冷却时间内的最新访问记录"""
+    if not fingerprint_id or not cooldown_minutes:
+        return None
+    since = timezone.now() - timedelta(minutes=cooldown_minutes)
+    return VisitorRecord.objects.filter(
+        fingerprint_id=fingerprint_id,
+        created_at__gte=since
+    ).order_by('-created_at').first()
+
+
+@database_sync_to_async
+def _count_successful_visits(fingerprint_id):
+    """统计该指纹的成功访问次数"""
+    if not fingerprint_id:
+        return 0
+    return VisitorRecord.objects.filter(fingerprint_id=fingerprint_id, is_success=True).count()
+
+
+@database_sync_to_async
+def _create_visitor_record(request_id, ip_address, distance, timestamp, is_success, module,
                            visitor_latitude, visitor_longitude, visitor_address,
-                           device_latitude, device_longitude, device_address):
+                           device_latitude, device_longitude, device_address,
+                           fingerprint):
     """创建访客记录（遇 request_id 唯一约束冲突则跳过）"""
     try:
         VisitorRecord.objects.create(
             request_id=request_id,
+            fingerprint=fingerprint,
             ip_address=ip_address if ip_address else None,
             distance=distance,
             timestamp=timestamp,
             is_success=is_success,
-            comment=comment,
             module=module,
             visitor_latitude=visitor_latitude,
             visitor_longitude=visitor_longitude,
@@ -127,11 +161,30 @@ def _create_visitor_record(request_id, ip_address, distance, timestamp, is_succe
 
 
 @database_sync_to_async
-def _update_visitor_comment(request_id, comment):
-    """更新访客记录的 comment 字段，同时刷新 timestamp 以便客户端同步"""
-    import time
-    VisitorRecord.objects.filter(request_id=request_id).update(
-        comment=comment, timestamp=int(time.time() * 1000))
+def _get_comments_for_record(record_id):
+    """查询单条访问记录下的所有评论"""
+    if not record_id:
+        return []
+    return list(Comment.objects.filter(visitor_record_id=record_id).order_by('created_at'))
+
+
+@database_sync_to_async
+def _count_comments_for_record(record_id):
+    """查询单条访问记录下的评论数量"""
+    if not record_id:
+        return 0
+    return Comment.objects.filter(visitor_record_id=record_id).count()
+
+
+@database_sync_to_async
+def _create_comment(record_id, fingerprint_id, content, timestamp_ms):
+    """创建评论记录"""
+    return Comment.objects.create(
+        visitor_record_id=record_id,
+        fingerprint_id=fingerprint_id,
+        content=content,
+        timestamp=timestamp_ms,
+    )
 
 
 @database_sync_to_async
@@ -142,6 +195,102 @@ def _get_visitor_records_since(module: str, last_sync: int):
         .filter(timestamp__gt=last_sync, module=module)
         .order_by('timestamp')
     )
+
+
+def _build_comment_list(comments, show_past_comments):
+    """构建前端所需的评论列表"""
+    if not show_past_comments:
+        return []
+    return [
+        {
+            "content": c.content,
+            "timestamp": c.timestamp,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in comments
+    ]
+
+
+@database_sync_to_async
+def _get_fingerprint_by_string(visitor_id):
+    """根据指纹字符串查询 Fingerprint（不创建）"""
+    if not visitor_id:
+        return None
+    try:
+        return Fingerprint.objects.get(visitor_fingerprint=visitor_id)
+    except Fingerprint.DoesNotExist:
+        return None
+
+
+@database_sync_to_async
+def _get_comments_for_fingerprint(fingerprint_id):
+    """查询该指纹下的所有评论（跨记录）"""
+    if not fingerprint_id:
+        return []
+    return list(Comment.objects.filter(fingerprint_id=fingerprint_id).order_by('created_at'))
+
+
+async def check_visitor_session(request):
+    """页面加载时检查当前指纹是否在冷却期内有有效记录"""
+    if request.method != 'POST':
+        return JsonResponse({"status": "error", "msg": "Bad method"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        visitor_fingerprint = data.get('fingerprint', '')
+    except json.JSONDecodeError:
+        return JsonResponse({"status": "error", "msg": "Invalid JSON"}, status=400)
+
+    config = await _get_latest_config()
+    cooldown_minutes = config.visit_cooldown_minutes if config else 30
+    max_comments = config.max_comments_per_record if config else 3
+    show_past_comments = config.show_past_comments if config else True
+    show_all_history = config.show_all_history if config else False
+
+    fingerprint = await _get_fingerprint_by_string(visitor_fingerprint)
+    existing_record = await _get_latest_record_by_fingerprint(
+        fingerprint.id if fingerprint else None,
+        cooldown_minutes
+    )
+
+    if not existing_record:
+        return JsonResponse({
+            "status": "new",
+            "has_session": False,
+            "max_comments": max_comments,
+        })
+
+    comments_count = await _count_comments_for_record(existing_record.id)
+    if comments_count < max_comments:
+        record_status = "existing"
+    else:
+        record_status = "full"
+
+    past_comments = []
+    if show_past_comments:
+        if show_all_history and fingerprint:
+            comments = await _get_comments_for_fingerprint(fingerprint.id)
+        else:
+            comments = await _get_comments_for_record(existing_record.id)
+        past_comments = _build_comment_list(comments, show_past_comments)
+
+    return JsonResponse({
+        "status": record_status,
+        "has_session": True,
+        "request_id": existing_record.request_id,
+        "distance": existing_record.distance or -1,
+        "visitor_latitude": existing_record.visitor_latitude,
+        "visitor_longitude": existing_record.visitor_longitude,
+        "visitor_address": existing_record.visitor_address or "",
+        "device_latitude": existing_record.device_latitude,
+        "device_longitude": existing_record.device_longitude,
+        "device_address": existing_record.device_address or "",
+        "location_source": "gps",
+        "max_comments": max_comments,
+        "comments_count": comments_count,
+        "past_comments": past_comments,
+    })
+
 
 async def verify_visitor_click(request):
     """处理前端验证请求 (真实双通道通讯完整版)"""
@@ -154,12 +303,13 @@ async def verify_visitor_click(request):
         visitor_lat = data.get('latitude')
         visitor_lng = data.get('longitude')
         location_source = data.get('location_source', 'gps')  # 'gps' 或 'ip_fallback'
+        visitor_fingerprint = data.get('fingerprint', '')
     except json.JSONDecodeError:
         return JsonResponse({"status": "error", "msg": "Invalid JSON"}, status=400)
 
     # 2. 生成唯一的请求追踪 ID
     request_id = f"req_loc_{uuid.uuid4().hex[:8]}"
-    
+
     # 3. 构造下发给手机的指令载荷
     payload = {
         "action": "GET_LOCATION",
@@ -167,7 +317,7 @@ async def verify_visitor_click(request):
         "visitor_lat": visitor_lat,
         "visitor_lng": visitor_lng
     }
-    
+
     # 4. 动态查找在线设备并发送索要位置的指令
     online_device = await _get_online_device_id()
     if not online_device:
@@ -177,7 +327,7 @@ async def verify_visitor_click(request):
 
     if not sent_success:
         return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~"})
-        
+
     # 5. 指令已发出，将请求挂起，循环等待手机把结果写进 Redis
     timeout_seconds = 10
     start_time = time.time()
@@ -219,60 +369,105 @@ async def verify_visitor_click(request):
             if device_lat is not None and device_lng is not None:
                 device_address = await asyncio.to_thread(_resolve_device_address, device_lat, device_lng)
 
-            # 持久化访客记录
-            await _create_visitor_record(
-                request_id=request_id,
-                ip_address=visitor_ip,
-                distance=calc_distance,
-                timestamp=timestamp_ms,
-                is_success=is_success,
-                comment="",
-                module="tracking",
-                visitor_latitude=visitor_lat,
-                visitor_longitude=visitor_lng,
-                visitor_address=visitor_address,
-                device_latitude=device_lat,
-                device_longitude=device_lng,
-                device_address=device_address,
+            # 获取或创建指纹
+            fingerprint = await _get_or_create_fingerprint(visitor_fingerprint)
+
+            # 根据指纹 + 冷却时间判断是新记录还是回访
+            cooldown_minutes = config.visit_cooldown_minutes if config else 30
+            max_comments = config.max_comments_per_record if config else 3
+            show_past_comments = config.show_past_comments if config else True
+            show_all_history = config.show_all_history if config else False
+
+            existing_record = await _get_latest_record_by_fingerprint(
+                fingerprint.id if fingerprint else None,
+                cooldown_minutes
             )
 
-            # 给手机发送验证结果通知
-            body_parts = []
-            if visitor_ip:
-                body_parts.append(f"访客IP: {visitor_ip}")
-            if calc_distance is not None:
-                body_parts.append(f"距离: {calc_distance:.1f}m (阈值{threshold:.0f}m)")
-            if visitor_address:
-                body_parts.append(f"访客位置: {visitor_address}")
-            if device_address:
-                body_parts.append(f"设备位置: {device_address}")
-            notify_body = "\n".join(body_parts) or "验证完成"
+            record_status = "new"
+            visit_count = 0
+            comments_count = 0
+            past_comments = []
 
-            await send_to_device_async(online_device, {
-                "action": "SHOW_NOTIFICATION",
-                "request_id": request_id,
-                "title": "✅ 验证成功" if is_success else "❌ 验证失败",
-                "body": notify_body,
-                "is_success": is_success,
-                "visitor_ip": visitor_ip,
-                "distance": calc_distance if calc_distance is not None else -1,
-                "comment": "",
-                "timestamp": timestamp_ms,
-                "visitor_latitude": visitor_lat,
-                "visitor_longitude": visitor_lng,
-                "visitor_address": visitor_address,
-                "device_latitude": device_lat,
-                "device_longitude": device_lng,
-                "device_address": device_address,
-            })
+            if existing_record:
+                # 回访场景：不创建新记录，仅返回已有记录信息
+                request_id = existing_record.request_id
+                comments_count = await _count_comments_for_record(existing_record.id)
+                if comments_count < max_comments:
+                    record_status = "existing"
+                else:
+                    record_status = "full"
+                if show_past_comments:
+                    if show_all_history and fingerprint:
+                        comments = await _get_comments_for_fingerprint(fingerprint.id)
+                    else:
+                        comments = await _get_comments_for_record(existing_record.id)
+                    past_comments = _build_comment_list(comments, show_past_comments)
+            else:
+                # 新记录场景
+                await _create_visitor_record(
+                    request_id=request_id,
+                    ip_address=visitor_ip,
+                    distance=calc_distance,
+                    timestamp=timestamp_ms,
+                    is_success=is_success,
+                    module="tracking",
+                    visitor_latitude=visitor_lat,
+                    visitor_longitude=visitor_lng,
+                    visitor_address=visitor_address,
+                    device_latitude=device_lat,
+                    device_longitude=device_lng,
+                    device_address=device_address,
+                    fingerprint=fingerprint,
+                )
+                if fingerprint:
+                    visit_count = await _count_successful_visits(fingerprint.id)
+                else:
+                    visit_count = 1 if is_success else 0
+
+                # 给手机发送验证结果通知（仅新记录触发）
+                body_parts = []
+                if visitor_ip:
+                    body_parts.append(f"访客IP: {visitor_ip}")
+                if calc_distance is not None:
+                    body_parts.append(f"距离: {calc_distance:.1f}m (阈值{threshold:.0f}m)")
+                if visitor_address:
+                    body_parts.append(f"访客位置: {visitor_address}")
+                if device_address:
+                    body_parts.append(f"设备位置: {device_address}")
+                notify_body = "\n".join(body_parts) or "验证完成"
+
+                await send_to_device_async(online_device, {
+                    "action": "SHOW_NOTIFICATION",
+                    "request_id": request_id,
+                    "title": "✅ 验证成功" if is_success else "❌ 验证失败",
+                    "body": notify_body,
+                    "is_success": is_success,
+                    "visitor_ip": visitor_ip,
+                    "distance": calc_distance if calc_distance is not None else -1,
+                    "comment": "",
+                    "timestamp": timestamp_ms,
+                    "visitor_latitude": visitor_lat,
+                    "visitor_longitude": visitor_lng,
+                    "visitor_address": visitor_address,
+                    "device_latitude": device_lat,
+                    "device_longitude": device_lng,
+                    "device_address": device_address,
+                })
 
             # 阅后即焚，清理 Redis
             cache.delete(result_key)
 
             # 返回前端（包含双方坐标和地址）
-            return JsonResponse({
+            distance_msg = f"距离 {calc_distance:.1f}m，阈值 {threshold:.0f}m" if calc_distance is not None else "无法计算距离"
+            if not is_success and location_source == 'ip_fallback':
+                distance_msg += "，打开GPS再试试？"
+            else:
+                distance_msg += "\n你在哪里?你真的有看到二维码吗(｡•́︿•̀｡)?"
+
+            response_data = {
                 "status": "success" if is_success else "fail",
-                "msg": f"距离 {calc_distance:.1f}m，阈值 {threshold:.0f}m" if calc_distance is not None else "无法计算距离",
+                "record_status": record_status,
+                "msg": distance_msg,
                 "request_id": request_id,
                 "distance": calc_distance if calc_distance is not None else -1,
                 "visitor_latitude": visitor_lat,
@@ -282,7 +477,16 @@ async def verify_visitor_click(request):
                 "device_longitude": device_lng,
                 "device_address": device_address,
                 "location_source": location_source,
-            })
+                "max_comments": max_comments,
+                "comments_count": comments_count,
+            }
+
+            if record_status == "new":
+                response_data["visit_count"] = visit_count
+            else:
+                response_data["past_comments"] = past_comments
+
+            return JsonResponse(response_data)
 
         # 休息 0.5 秒，避免占满 CPU
         await asyncio.sleep(0.5)
@@ -297,12 +501,32 @@ async def add_visitor_comment(request):
             data = json.loads(request.body)
             req_id = data.get('request_id')
             comment_text = data.get('comment', '')
+            is_blank = not (comment_text and comment_text.strip())
 
-            # 持久化 comment 到数据库
-            await _update_visitor_comment(req_id, comment_text)
+            config = await _get_latest_config()
+            max_comments = config.max_comments_per_record if config else 3
 
-            # 仅当留言非空时才推送到在线设备
-            if comment_text and comment_text.strip():
+            # 查找对应记录
+            try:
+                record = await database_sync_to_async(VisitorRecord.objects.get)(request_id=req_id)
+            except VisitorRecord.DoesNotExist:
+                return JsonResponse({"status": "error", "msg": "记录不存在"}, status=404)
+
+            comments_count = await _count_comments_for_record(record.id)
+            if comments_count >= max_comments:
+                return JsonResponse({"status": "error", "msg": "该记录下的评论已达上限"}, status=400)
+
+            timestamp_ms = int(time.time() * 1000)
+            comment = None
+            if not is_blank:
+                comment = await _create_comment(
+                    record_id=record.id,
+                    fingerprint_id=record.fingerprint_id,
+                    content=comment_text,
+                    timestamp_ms=timestamp_ms,
+                )
+
+                # 仅当留言非空时才推送到在线设备
                 online_device = await _get_online_device_id()
                 if online_device:
                     await send_to_device_async(online_device, {
@@ -314,11 +538,23 @@ async def add_visitor_comment(request):
                         "visitor_ip": "",
                         "distance": 0,
                         "comment": comment_text,
-                        "timestamp": int(time.time() * 1000),
+                        "timestamp": timestamp_ms,
                     })
-            return JsonResponse({"status": "success"})
-        except Exception:
-            return JsonResponse({"status": "error"}, status=400)
+
+            response_data = {
+                "status": "success",
+                "is_blank": is_blank,
+            }
+            if comment:
+                response_data["comment"] = {
+                    "content": comment.content,
+                    "timestamp": comment.timestamp,
+                    "created_at": comment.created_at.isoformat(),
+                }
+            return JsonResponse(response_data)
+        except Exception as e:
+            print(f"⚠️ 提交评论失败: {e}")
+            return JsonResponse({"status": "error", "msg": str(e)}, status=400)
     return JsonResponse({"status": "error"}, status=405)
 
 
@@ -352,7 +588,7 @@ async def get_history(request):
             "Distance": r.distance or 0,
             "Timestamp": r.timestamp,
             "IsSuccess": r.is_success,
-            "Comment": r.comment,
+            "Comment": _get_latest_comment_text(r),
             "VisitorLatitude": r.visitor_latitude,
             "VisitorLongitude": r.visitor_longitude,
             "VisitorAddress": r.visitor_address or "",
@@ -364,6 +600,12 @@ async def get_history(request):
     ]
 
     return JsonResponse(data, safe=False)
+
+
+def _get_latest_comment_text(record):
+    """获取记录的最新评论文本（兼容旧版单评论字段）"""
+    latest = record.comments.order_by('-created_at').first()
+    return latest.content if latest else ""
 
 
 # ================== 协议 #5: 静默位置上报 ==================

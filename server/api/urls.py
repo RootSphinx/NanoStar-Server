@@ -9,6 +9,7 @@ urlpatterns = [
     path('', views.index_page, name='index'),
 
     # 前端交互 API
+    path('visitor/session/', views.check_visitor_session, name='visitor_session'),
     path('visitor/verify/', views.verify_visitor_click, name='visitor_verify'),
     path('visitor/comment/', views.add_visitor_comment, name='visitor_comment'),
 
