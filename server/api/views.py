@@ -567,5 +567,227 @@ async def add_visitor_comment(request):
                         "visitor_ip": "",
                         "distance": 0,
                         "comment": comment_text,
-                        "comments": [{"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()} for c in record.comments.order_by("created_at")],
-                        "fingerprint_index": record.fingerprint_id or 0,
+                        "timestamp": timestamp_ms,
+                    })
+
+            response_data = {
+                "status": "success",
+                "is_blank": is_blank,
+            }
+            if comment:
+                response_data["comment"] = {
+                    "content": comment.content,
+                    "timestamp": comment.timestamp,
+                    "created_at": comment.created_at.isoformat(),
+                }
+            return JsonResponse(response_data)
+        except Exception as e:
+            print(f"⚠️ 提交评论失败: {e}")
+            return JsonResponse({"status": "error", "msg": str(e)}, status=400)
+    return JsonResponse({"status": "error"}, status=405)
+
+
+# ================== 协议 #4: 历史数据拉取 ==================
+
+
+
+async def get_history(request):
+    """协议 #4: 手机拉取历史访客记录
+
+    GET /api/app/history?module=tracking&last_sync={本地最大Timestamp毫秒值}
+
+    返回 timestamp > last_sync 的记录数组，按时间升序。
+    last_sync 为空库时传 0。
+    """
+    if request.method != 'GET':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    module = request.GET.get('module', 'tracking')
+    last_sync_str = request.GET.get('last_sync', '0')
+
+    try:
+        last_sync = int(last_sync_str)
+    except (ValueError, TypeError):
+        return JsonResponse({"error": "Invalid last_sync"}, status=400)
+
+    records = await _get_visitor_records_since(module, last_sync)
+
+    data = [
+        {
+            "RequestId": r.request_id,
+            "FingerprintIndex": r.fingerprint_id or 0,
+            "IpAddress": r.ip_address or "",
+            "Distance": r.distance or 0,
+            "Timestamp": r.timestamp,
+            "IsSuccess": r.is_success,
+            "Comment": _get_latest_comment_text(r),
+            "Comments": [
+                {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
+                for c in r.comments.all().order_by('created_at')
+            ],
+            "VisitorLatitude": r.visitor_latitude,
+            "VisitorLongitude": r.visitor_longitude,
+            "VisitorAddress": r.visitor_address or "",
+            "DeviceLatitude": r.device_latitude,
+            "DeviceLongitude": r.device_longitude,
+            "DeviceAddress": r.device_address or "",
+        }
+        for r in records
+    ]
+
+    return JsonResponse(data, safe=False)
+
+
+def _get_latest_comment_text(record):
+    """获取记录的最新评论文本（兼容旧版单评论字段）"""
+    latest = record.comments.order_by('-created_at').first()
+    return latest.content if latest else ""
+
+
+# ================== 协议 #5: 静默位置上报 ==================
+
+@csrf_exempt
+
+@database_sync_to_async
+def _get_record_by_request_id(request_id):
+    """查询单条记录（含指纹和评论预加载）"""
+    try:
+        return VisitorRecord.objects.select_related('fingerprint').prefetch_related('comments').get(request_id=request_id)
+    except VisitorRecord.DoesNotExist:
+        return None
+
+
+@database_sync_to_async
+def _get_past_records_for_fingerprint(fingerprint_id, exclude_request_id, show_all_history):
+    """查询指纹的过往记录（不含当前记录）"""
+    if not fingerprint_id or not show_all_history:
+        return []
+    return list(
+        VisitorRecord.objects
+        .filter(fingerprint_id=fingerprint_id)
+        .exclude(request_id=exclude_request_id)
+        .prefetch_related('comments')
+        .order_by('-timestamp')
+    )
+
+
+async def get_record_detail(request, request_id):
+    """GET /api/app/history/detail/<request_id>/
+    返回当前记录完整信息 + 同一指纹的过往记录（受 AppConfig 控制）"""
+    if request.method != 'GET':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    config = await _get_latest_config()
+    show_past_comments = config.show_past_comments if config else True
+    show_all_history = config.show_all_history if config else False
+
+    record = await _get_record_by_request_id(request_id)
+    if not record:
+        return JsonResponse({"error": "Record not found"}, status=404)
+
+    current_comments = [
+        {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
+        for c in record.comments.order_by('created_at')
+    ]
+
+    past_records = []
+    if show_past_comments and record.fingerprint_id:
+        past = await _get_past_records_for_fingerprint(
+            record.fingerprint_id, request_id, show_all_history
+        )
+        past_records = [
+            {
+                "RequestId": pr.request_id,
+                "FingerprintIndex": pr.fingerprint_id or 0,
+                "Distance": pr.distance or 0,
+                "Timestamp": pr.timestamp,
+                "IsSuccess": pr.is_success,
+                "VisitorAddress": pr.visitor_address or "",
+                "Comments": [
+                    {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
+                    for c in pr.comments.order_by('created_at')
+                ],
+            }
+            for pr in past
+        ]
+
+    return JsonResponse({
+        "Record": {
+            "RequestId": record.request_id,
+            "FingerprintIndex": record.fingerprint_id or 0,
+            "IpAddress": record.ip_address or "",
+            "Distance": record.distance or 0,
+            "Timestamp": record.timestamp,
+            "IsSuccess": record.is_success,
+            "VisitorLatitude": record.visitor_latitude,
+            "VisitorLongitude": record.visitor_longitude,
+            "VisitorAddress": record.visitor_address or "",
+            "DeviceLatitude": record.device_latitude,
+            "DeviceLongitude": record.device_longitude,
+            "DeviceAddress": record.device_address or "",
+            "Comments": current_comments,
+        },
+        "PastRecords": past_records,
+    })
+
+
+async def report_location_http(request):
+    """协议 #5: 手机后台保活时通过 HTTP 直接上报位置
+
+    POST /api/app/report-location
+    由 Android MainGuardService 每 60s 调用一次，不依赖 WebSocket。
+    """
+    if request.method != 'POST':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    auth_header = request.headers.get("Authorization", "")
+    if settings.APP_SECRET_TOKEN not in auth_header:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    device_id = request.headers.get("X-Device-ID") or payload.get("device_id") or "unknown"
+
+    # 写入 Redis 缓存，供 verify 流程或监控使用
+    cache.set(f"device_location_cache:{device_id}", payload, timeout=300)
+
+    # 同时也写入 location_result，方便配合 verify 轮询
+    request_id = payload.get("request_id")
+    if request_id:
+        cache.set(f"location_result:{request_id}", payload, timeout=60)
+
+    print(f"📍 HTTP 位置上报: device={device_id}, lat={payload.get('latitude')}, lng={payload.get('longitude')}")
+    return JsonResponse({"status": "received"})
+
+
+# ================== 手机端离线回调底层逻辑 ==================
+
+class HttpActionContext:
+    def __init__(self, device_id):
+        self.device_id = device_id
+        self.channel_name = "http_stateless"
+
+@csrf_exempt
+async def app_action_callback(request):
+    """手机被 FCM 唤醒后，走 HTTP 接口上报坐标的入口"""
+    if request.method != 'POST':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    auth_header = request.headers.get("Authorization", "")
+    if settings.APP_SECRET_TOKEN not in auth_header:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body)
+        device_id = request.headers.get("X-Device-ID", "unknown")
+        context = HttpActionContext(device_id)
+
+        # 丢给 WebSocket 路由器统一处理（会触发 handlers.py 里的写入 Redis 逻辑）
+        await router.route_message(context, payload)
+
+        return JsonResponse({"status": "received"})
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
