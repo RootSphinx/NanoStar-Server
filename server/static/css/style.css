@@ -161,6 +161,13 @@ body::before {
     display: inline-block;
 }
 
+/* 总访问人数 */
+.total-visitors {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.85;
+}
+
 /* 历史评论列表 */
 .past-comments {
     margin: 12px 0 16px 0;

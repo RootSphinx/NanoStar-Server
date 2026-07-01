@@ -7,6 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const commentSubtitle = document.getElementById('comment-subtitle');
     const commentForm = document.getElementById('comment-form');
     const visitCountEl = document.getElementById('visit-count');
+    const visitMyCountEl = document.getElementById('visit-my-count');
+    const totalVisitorsEl = document.getElementById('total-visitors');
     const pastCommentsEl = document.getElementById('past-comments');
     const pastCommentsList = document.getElementById('past-comments-list');
 
@@ -207,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (recordStatus === 'new') {
             setCommentTitle('已悄悄通知对方～', '对方知道有人路过啦');
-            showVisitCount(data.visit_count);
+            showVisitCount(data.visit_count, data.total_visitors);
             showCommentForm();
             clearPastComments();
             resetCommentForm();
@@ -233,9 +235,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (commentSubtitle) commentSubtitle.textContent = subtitle || '';
     }
 
-    function showVisitCount(count) {
+    function showVisitCount(count, totalVisitors) {
         if (!visitCountEl) return;
-        visitCountEl.textContent = `这是你第 ${count || 1} 次成功访问`;
+        if (visitMyCountEl) visitMyCountEl.textContent = `这是你第 ${count || 1} 次成功访问`;
+        if (totalVisitorsEl) {
+            if (totalVisitors) {
+                totalVisitorsEl.textContent = `已经有 ${totalVisitors} 个人成功光顾过`;
+                totalVisitorsEl.classList.remove('hidden');
+            } else {
+                totalVisitorsEl.classList.add('hidden');
+            }
+        }
         visitCountEl.classList.remove('hidden');
     }
 

@@ -135,6 +135,12 @@ def _count_successful_visits(fingerprint_id):
 
 
 @database_sync_to_async
+def _count_total_successful_visitors():
+    """统计所有成功访问人数"""
+    return VisitorRecord.objects.filter(is_success=True).count()
+
+
+@database_sync_to_async
 def _create_visitor_record(request_id, ip_address, distance, timestamp, is_success, module,
                            visitor_latitude, visitor_longitude, visitor_address,
                            device_latitude, device_longitude, device_address,
@@ -377,6 +383,7 @@ async def verify_visitor_click(request):
             max_comments = config.max_comments_per_record if config else 3
             show_past_comments = config.show_past_comments if config else True
             show_all_history = config.show_all_history if config else False
+            show_total_visitors = config.show_total_visitors if config else False
 
             existing_record = await _get_latest_record_by_fingerprint(
                 fingerprint.id if fingerprint else None,
@@ -385,6 +392,7 @@ async def verify_visitor_click(request):
 
             record_status = "new"
             visit_count = 0
+            total_visitors = 0
             comments_count = 0
             past_comments = []
 
@@ -423,6 +431,10 @@ async def verify_visitor_click(request):
                     visit_count = await _count_successful_visits(fingerprint.id)
                 else:
                     visit_count = 1 if is_success else 0
+
+                total_visitors = 0
+                if show_total_visitors:
+                    total_visitors = await _count_total_successful_visitors()
 
                 # 给手机发送验证结果通知（仅新记录触发）
                 body_parts = []
@@ -483,6 +495,8 @@ async def verify_visitor_click(request):
 
             if record_status == "new":
                 response_data["visit_count"] = visit_count
+                if show_total_visitors:
+                    response_data["total_visitors"] = total_visitors
             else:
                 response_data["past_comments"] = past_comments
 

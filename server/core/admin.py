@@ -17,7 +17,7 @@ class FingerprintAdmin(admin.ModelAdmin):
 
 @admin.register(AppConfig)
 class AppConfigAdmin(admin.ModelAdmin):
-    list_display = ('version_id', 'is_tracking_enabled', 'distance_threshold', 'visit_cooldown_minutes', 'max_comments_per_record', 'show_past_comments', 'show_all_history', 'updated_at')
+    list_display = ('version_id', 'is_tracking_enabled', 'distance_threshold', 'visit_cooldown_minutes', 'max_comments_per_record', 'show_past_comments', 'show_all_history', 'show_total_visitors', 'updated_at')
 
 
 @admin.register(Comment)

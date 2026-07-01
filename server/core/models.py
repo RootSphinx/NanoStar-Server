@@ -30,6 +30,7 @@ class AppConfig(models.Model):
     max_comments_per_record = models.PositiveIntegerField(default=3, help_text="同一访问记录最大评论数")
     show_past_comments = models.BooleanField(default=True, help_text="评论页是否展示历史评论列表")
     show_all_history = models.BooleanField(default=False, help_text="历史评论是否显示该指纹全部记录下的留言")
+    show_total_visitors = models.BooleanField(default=False, help_text="成功页是否显示累计成功访客人数")
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
