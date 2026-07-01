@@ -16,5 +16,6 @@ urlpatterns = [
     # 手机端回调 API
     path('app/action-callback/', views.app_action_callback, name='app_action_callback'),
     path('app/history/', views.get_history, name='history'),
+    path('app/history/detail/<str:request_id>/', views.get_record_detail, name='record_detail'),
     path('app/report-location/', views.report_location_http, name='report_location'),
 ]

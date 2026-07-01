@@ -2,7 +2,7 @@
 import time
 from channels.db import database_sync_to_async
 from django.core.cache import cache
-from core.models import Device, AppConfig
+from core.models import Device, AppConfig, Fingerprint
 from .action_router import router
 
 @router.register("DEVICE_HANDSHAKE")
@@ -101,6 +101,7 @@ async def _do_sync_config(consumer, payload: dict):
     device_id = getattr(consumer, 'device_id', None)
 
     config = await get_latest_config()
+    total_visitors = await _count_fingerprints()
     if not config:
         print(f"⚙️ 无配置记录，跳过同步 (req={request_id})")
         return
@@ -115,6 +116,10 @@ async def _do_sync_config(consumer, payload: dict):
             "data": {
                 "is_tracking_enabled": config.is_tracking_enabled,
                 "distance_threshold": config.distance_threshold,
+                "show_total_visitors": config.show_total_visitors,
+                "total_visitors": total_visitors,
+                "show_past_comments": config.show_past_comments,
+                "show_all_history": config.show_all_history,
             }
         }
 
@@ -129,6 +134,13 @@ async def _do_sync_config(consumer, payload: dict):
     else:
         print(f"⚙️ 客户端配置已是最新 (req={request_id})")
 
+
+
+
+@database_sync_to_async
+def _count_fingerprints():
+    """统计指纹总数（累计成功访客数）"""
+    return Fingerprint.objects.count()
 
 # ==================== ACK 占位 Handler ====================
 

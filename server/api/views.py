@@ -137,7 +137,7 @@ def _count_successful_visits(fingerprint_id):
 @database_sync_to_async
 def _count_total_successful_visitors():
     """统计所有成功访问人数"""
-    return VisitorRecord.objects.filter(is_success=True).count()
+    return Fingerprint.objects.count()
 
 
 @database_sync_to_async
@@ -199,6 +199,8 @@ def _get_visitor_records_since(module: str, last_sync: int):
     return list(
         VisitorRecord.objects
         .filter(timestamp__gt=last_sync, module=module)
+        .select_related('fingerprint')
+        .prefetch_related('comments')
         .order_by('timestamp')
     )
 
@@ -466,6 +468,8 @@ async def verify_visitor_click(request):
                     "visitor_ip": visitor_ip,
                     "distance": calc_distance if calc_distance is not None else -1,
                     "comment": "",
+                    "comments": [],
+                    "fingerprint_index": fingerprint.id if fingerprint else 0,
                     "timestamp": timestamp_ms,
                     "visitor_latitude": visitor_lat,
                     "visitor_longitude": visitor_lng,
@@ -563,136 +567,5 @@ async def add_visitor_comment(request):
                         "visitor_ip": "",
                         "distance": 0,
                         "comment": comment_text,
-                        "timestamp": timestamp_ms,
-                    })
-
-            response_data = {
-                "status": "success",
-                "is_blank": is_blank,
-            }
-            if comment:
-                response_data["comment"] = {
-                    "content": comment.content,
-                    "timestamp": comment.timestamp,
-                    "created_at": comment.created_at.isoformat(),
-                }
-            return JsonResponse(response_data)
-        except Exception as e:
-            print(f"⚠️ 提交评论失败: {e}")
-            return JsonResponse({"status": "error", "msg": str(e)}, status=400)
-    return JsonResponse({"status": "error"}, status=405)
-
-
-# ================== 协议 #4: 历史数据拉取 ==================
-
-async def get_history(request):
-    """协议 #4: 手机拉取历史访客记录
-
-    GET /api/app/history?module=tracking&last_sync={本地最大Timestamp毫秒值}
-
-    返回 timestamp > last_sync 的记录数组，按时间升序。
-    last_sync 为空库时传 0。
-    """
-    if request.method != 'GET':
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-    module = request.GET.get('module', 'tracking')
-    last_sync_str = request.GET.get('last_sync', '0')
-
-    try:
-        last_sync = int(last_sync_str)
-    except (ValueError, TypeError):
-        return JsonResponse({"error": "Invalid last_sync"}, status=400)
-
-    records = await _get_visitor_records_since(module, last_sync)
-
-    data = [
-        {
-            "RequestId": r.request_id,
-            "IpAddress": r.ip_address or "",
-            "Distance": r.distance or 0,
-            "Timestamp": r.timestamp,
-            "IsSuccess": r.is_success,
-            "Comment": _get_latest_comment_text(r),
-            "VisitorLatitude": r.visitor_latitude,
-            "VisitorLongitude": r.visitor_longitude,
-            "VisitorAddress": r.visitor_address or "",
-            "DeviceLatitude": r.device_latitude,
-            "DeviceLongitude": r.device_longitude,
-            "DeviceAddress": r.device_address or "",
-        }
-        for r in records
-    ]
-
-    return JsonResponse(data, safe=False)
-
-
-def _get_latest_comment_text(record):
-    """获取记录的最新评论文本（兼容旧版单评论字段）"""
-    latest = record.comments.order_by('-created_at').first()
-    return latest.content if latest else ""
-
-
-# ================== 协议 #5: 静默位置上报 ==================
-
-@csrf_exempt
-async def report_location_http(request):
-    """协议 #5: 手机后台保活时通过 HTTP 直接上报位置
-
-    POST /api/app/report-location
-    由 Android MainGuardService 每 60s 调用一次，不依赖 WebSocket。
-    """
-    if request.method != 'POST':
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-    auth_header = request.headers.get("Authorization", "")
-    if settings.APP_SECRET_TOKEN not in auth_header:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-
-    try:
-        payload = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-    device_id = request.headers.get("X-Device-ID") or payload.get("device_id") or "unknown"
-
-    # 写入 Redis 缓存，供 verify 流程或监控使用
-    cache.set(f"device_location_cache:{device_id}", payload, timeout=300)
-
-    # 同时也写入 location_result，方便配合 verify 轮询
-    request_id = payload.get("request_id")
-    if request_id:
-        cache.set(f"location_result:{request_id}", payload, timeout=60)
-
-    print(f"📍 HTTP 位置上报: device={device_id}, lat={payload.get('latitude')}, lng={payload.get('longitude')}")
-    return JsonResponse({"status": "received"})
-
-
-# ================== 手机端离线回调底层逻辑 ==================
-
-class HttpActionContext:
-    def __init__(self, device_id):
-        self.device_id = device_id
-        self.channel_name = "http_stateless"
-
-@csrf_exempt
-async def app_action_callback(request):
-    """手机被 FCM 唤醒后，走 HTTP 接口上报坐标的入口"""
-    if request.method != 'POST':
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-    auth_header = request.headers.get("Authorization", "")
-    if settings.APP_SECRET_TOKEN not in auth_header:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-
-    try:
-        payload = json.loads(request.body)
-        device_id = request.headers.get("X-Device-ID", "unknown")
-        context = HttpActionContext(device_id)
-
-        # 丢给 WebSocket 路由器统一处理（会触发 handlers.py 里的写入 Redis 逻辑）
-        await router.route_message(context, payload)
-
-        return JsonResponse({"status": "received"})
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
+                        "comments": [{"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()} for c in record.comments.order_by("created_at")],
+                        "fingerprint_index": record.fingerprint_id or 0,
