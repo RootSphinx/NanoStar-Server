@@ -95,14 +95,18 @@ def index_page(request):
 
 @csrf_exempt
 def proxy_ip_location(request):
-    """代理前端 IP 定位请求，避免暴露 API key"""
+    """代理前端 IP 定位请求，避免暴露 API key
+    从请求中提取客户端真实 IP，调用 ipinfo 查询归属地
+    """
     if request.method != 'GET':
         return JsonResponse({"error": "Method not allowed"}, status=405)
 
-    endpoint = getattr(settings, 'IP_API_ENDPOINT', 'https://uapis.cn/api/v1/network/myip')
-    api_key = getattr(settings, 'IP_API_KEY', '')
+    ip = _get_client_ip(request)
+    if not ip:
+        return JsonResponse({"error": "Failed to get client IP"}, status=502)
 
-    url = f"{endpoint}?source=commercial&key={api_key}"
+    api_key = getattr(settings, 'IP_API_KEY', '')
+    url = f"https://uapis.cn/api/v1/network/ipinfo?ip={ip}&source=commercial&key={api_key}"
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
             data = json.loads(resp.read().decode('utf-8'))
