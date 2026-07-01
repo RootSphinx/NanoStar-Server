@@ -623,7 +623,7 @@ async def get_history(request):
             "Comment": _get_latest_comment_text(r),
             "Comments": [
                 {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
-                for c in r.comments.all().order_by('created_at')
+                for c in sorted(r.comments.all(), key=lambda x: x.created_at)
             ],
             "VisitorLatitude": r.visitor_latitude,
             "VisitorLongitude": r.visitor_longitude,
@@ -639,8 +639,13 @@ async def get_history(request):
 
 
 def _get_latest_comment_text(record):
-    """获取记录的最新评论文本（兼容旧版单评论字段）"""
-    latest = record.comments.order_by('-created_at').first()
+    """获取记录的最新评论文本（兼容旧版单评论字段）
+    使用 prefetch_related 缓存，避免在异步上下文中触发新查询
+    """
+    comments = list(record.comments.all())
+    if not comments:
+        return ""
+    latest = max(comments, key=lambda c: c.created_at)
     return latest.content if latest else ""
 
 
@@ -687,7 +692,7 @@ async def get_record_detail(request, request_id):
 
     current_comments = [
         {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
-        for c in record.comments.order_by('created_at')
+        for c in sorted(record.comments.all(), key=lambda x: x.created_at)
     ]
 
     past_records = []
@@ -705,7 +710,7 @@ async def get_record_detail(request, request_id):
                 "VisitorAddress": pr.visitor_address or "",
                 "Comments": [
                     {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
-                    for c in pr.comments.order_by('created_at')
+                    for c in sorted(pr.comments.all(), key=lambda x: x.created_at)
                 ],
             }
             for pr in past
