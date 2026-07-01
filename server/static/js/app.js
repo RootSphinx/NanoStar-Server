@@ -212,6 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showVisitCount(data.visit_count, data.total_visitors);
             showCommentForm();
             clearPastComments();
+            renderPastComments(data.past_comments || []);
             resetCommentForm();
             switchView('view-verify', 'view-comment');
         } else if (recordStatus === 'existing') {

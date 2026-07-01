@@ -384,6 +384,7 @@ async def verify_visitor_click(request):
             show_past_comments = config.show_past_comments if config else True
             show_all_history = config.show_all_history if config else False
             show_total_visitors = config.show_total_visitors if config else False
+            show_first_comments = config.show_first_comments if config else False
 
             existing_record = await _get_latest_record_by_fingerprint(
                 fingerprint.id if fingerprint else None,
@@ -435,6 +436,14 @@ async def verify_visitor_click(request):
                 total_visitors = 0
                 if show_total_visitors:
                     total_visitors = await _count_total_successful_visitors()
+
+                past_comments = []
+                if show_first_comments and show_past_comments and fingerprint:
+                    if show_all_history:
+                        comments = await _get_comments_for_fingerprint(fingerprint.id)
+                    else:
+                        comments = await _get_comments_for_record(fingerprint.id)
+                    past_comments = _build_comment_list(comments, show_past_comments)
 
                 # 给手机发送验证结果通知（仅新记录触发）
                 body_parts = []
@@ -495,6 +504,8 @@ async def verify_visitor_click(request):
 
             if record_status == "new":
                 response_data["visit_count"] = visit_count
+                if past_comments:
+                    response_data["past_comments"] = past_comments
                 if show_total_visitors:
                     response_data["total_visitors"] = total_visitors
             else:
@@ -506,7 +517,7 @@ async def verify_visitor_click(request):
         await asyncio.sleep(0.5)
 
     # 6. 等待超时
-    return JsonResponse({"status": "fail", "msg": "等待手机响应超时"})
+    return JsonResponse({"status": "fail", "msg": "等待手机响应超时，如果你看到他了就去提醒他一下吧"})
 
 async def add_visitor_comment(request):
     """处理前端发来的留言"""

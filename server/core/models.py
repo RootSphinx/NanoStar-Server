@@ -31,6 +31,7 @@ class AppConfig(models.Model):
     show_past_comments = models.BooleanField(default=True, help_text="评论页是否展示历史评论列表")
     show_all_history = models.BooleanField(default=False, help_text="历史评论是否显示该指纹全部记录下的留言")
     show_total_visitors = models.BooleanField(default=False, help_text="成功页是否显示累计成功访客人数")
+    show_first_comments = models.BooleanField(default=False, help_text="首次成功访问时是否展示过去的留言")
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
