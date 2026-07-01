@@ -259,6 +259,7 @@ def _get_comments_for_fingerprint(fingerprint_id):
     return list(Comment.objects.filter(fingerprint_id=fingerprint_id).order_by('created_at'))
 
 
+@csrf_exempt
 async def check_visitor_session(request):
     """页面加载时检查当前指纹是否在冷却期内有有效记录"""
     if request.method != 'POST':
@@ -321,6 +322,7 @@ async def check_visitor_session(request):
     })
 
 
+@csrf_exempt
 async def verify_visitor_click(request):
     """处理前端验证请求 (真实双通道通讯完整版)"""
     if request.method != 'POST':
@@ -544,6 +546,7 @@ async def verify_visitor_click(request):
     # 6. 等待超时
     return JsonResponse({"status": "fail", "msg": "等待手机响应超时，如果你看到他了就去提醒他一下吧"})
 
+@csrf_exempt
 async def add_visitor_comment(request):
     """处理前端发来的留言"""
     if request.method == 'POST':
