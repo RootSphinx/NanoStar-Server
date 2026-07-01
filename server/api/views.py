@@ -87,12 +87,29 @@ def _resolve_device_address(lat, lng):
 
 def index_page(request):
     """渲染前端网页"""
-    return render(request, 'index.html', {
-        'ip_api_endpoint': getattr(settings, 'IP_API_ENDPOINT', ''),
-        'ip_api_key': getattr(settings, 'IP_API_KEY', ''),
-    })
+    return render(request, 'index.html')
 
 # ==================== 数据库辅助 (异步包装) ====================
+
+
+
+@csrf_exempt
+def proxy_ip_location(request):
+    """代理前端 IP 定位请求，避免暴露 API key"""
+    if request.method != 'GET':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    endpoint = getattr(settings, 'IP_API_ENDPOINT', 'https://uapis.cn/api/v1/network/myip')
+    api_key = getattr(settings, 'IP_API_KEY', '')
+
+    url = f"{endpoint}?source=commercial&key={api_key}"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=502)
+
 
 @database_sync_to_async
 def _get_latest_config():
@@ -329,12 +346,12 @@ async def verify_visitor_click(request):
     # 4. 动态查找在线设备并发送索要位置的指令
     online_device = await _get_online_device_id()
     if not online_device:
-        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~"})
+        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~\n如果你想的话可以提醒他一下"})
 
     sent_success = await send_to_device_async(online_device, payload)
 
     if not sent_success:
-        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~"})
+        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~\n如果你想的话可以提醒他一下"})
 
     # 5. 指令已发出，将请求挂起，循环等待手机把结果写进 Redis
     timeout_seconds = 10
@@ -485,7 +502,7 @@ async def verify_visitor_click(request):
             # 返回前端（包含双方坐标和地址）
             distance_msg = f"距离 {calc_distance:.1f}m，阈值 {threshold:.0f}m" if calc_distance is not None else "无法计算距离"
             if not is_success and location_source == 'ip_fallback':
-                distance_msg += "，打开GPS再试试？"
+                distance_msg += "\n打开GPS再试试？"
             else:
                 distance_msg += "\n你在哪里?你真的有看到二维码吗(｡•́︿•̀｡)?"
 
@@ -704,6 +721,7 @@ async def get_record_detail(request, request_id):
             {
                 "RequestId": pr.request_id,
                 "FingerprintIndex": pr.fingerprint_id or 0,
+                "IpAddress":pr.ip_address,
                 "Distance": pr.distance or 0,
                 "Timestamp": pr.timestamp,
                 "IsSuccess": pr.is_success,

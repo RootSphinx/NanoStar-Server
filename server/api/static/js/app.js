@@ -154,21 +154,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 通过 uapis.cn 获取真实公网 IP（配置由 Django 模板注入）
+    // 通过服务器代理获取真实公网 IP（API key 不暴露给前端）
     async function getPublicIp() {
         try {
-            const url = ipApiConfig.endpoint + '?source=commercial&key=' + ipApiConfig.key;
-            const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            const resp = await fetch('/api/ip-location/', { signal: AbortSignal.timeout(5000) });
             const json = await resp.json();
             return json.ip || null;
         } catch (e) { return null; }
     }
 
-    // 通过 uapis.cn 获取 IP 地理定位经纬度
+    // 通过服务器代理获取 IP 地理定位经纬度
     async function getIpLocation() {
         try {
-            const url = ipApiConfig.endpoint + '?source=commercial&key=' + ipApiConfig.key;
-            const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            const resp = await fetch('/api/ip-location/', { signal: AbortSignal.timeout(5000) });
             const json = await resp.json();
             if (json.latitude && json.longitude) {
                 return { lat: json.latitude, lng: json.longitude };
