@@ -30,10 +30,16 @@ python manage.py makemigrations core ws_gateway api
 python manage.py migrate
 
 # ==========================================
-# [新增] 自动创建超级用户 (如果不存在的话)
+# 自动创建超级用户（凭据由 docker-compose 环境变量注入）
 # ==========================================
 echo "Checking superuser status..."
-python -c "
+SUPERUSER_USERNAME="${SUPERUSER_USERNAME:-}"
+SUPERUSER_PASSWORD="${SUPERUSER_PASSWORD:-}"
+
+if [ -z "$SUPERUSER_USERNAME" ] || [ -z "$SUPERUSER_PASSWORD" ]; then
+    echo "⚠️  SUPERUSER_USERNAME 或 SUPERUSER_PASSWORD 未设置，跳过超管创建。"
+else
+    python -c "
 import os
 import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'nanostar.settings')
@@ -42,17 +48,16 @@ django.setup()
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
-# 你可以在这里修改默认的账号和密码
-username = 'admin'
-email = 'admin@example.com'
-password = 'adminpassword123'
+username = os.environ.get('SUPERUSER_USERNAME', '')
+password = os.environ.get('SUPERUSER_PASSWORD', '')
 
 if not User.objects.filter(username=username).exists():
-    User.objects.create_superuser(username=username, email=email, password=password)
+    User.objects.create_superuser(username=username, email='', password=password)
     print(f'✅ Superuser \'{username}\' created successfully!')
 else:
     print(f'⚡ Superuser \'{username}\' already exists. Skipping creation.')
 "
+fi
 
 # 收集静态文件
 echo "Collecting static files..."
