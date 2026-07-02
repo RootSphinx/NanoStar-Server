@@ -80,22 +80,71 @@ class AppConsumer(AsyncWebsocketConsumer):
     # ==================================================================
 
     async def receive(self, text_data):
-        """收到的原始 WebSocket 文本 (SignalR 协议帧)"""
+        """收到的原始 WebSocket 文本 (SignalR 协议帧)
+        支持单条消息中包含多条帧（RECORD_SEP 分隔或紧密拼接）
+        """
         raw = text_data
-        raw_preview = raw[:300] if raw else "(empty)"
 
-        # --- 1. 剥离帧分隔符 ---
-        text = raw.rstrip(RECORD_SEP)
-        if not text:
+        # --- 1. 按 RECORD_SEP 拆分多帧 ---
+        parts = [p.strip() for p in raw.split(RECORD_SEP) if p.strip()]
+        if not parts:
             logger.debug(f"📩 [WS] 空帧 ip={self._client_ip}")
             return
+
+        # 如果没有分隔符但包含多个顶层 JSON 对象，兜底拆分
+        if len(parts) == 1:
+            parts = self._split_json_objects(parts[0])
+            if not parts:
+                logger.debug(f"📩 [WS] 空帧 ip={self._client_ip}")
+                return
+
+        for text in parts:
+            await self._handle_frame(text)
+
+    @staticmethod
+    def _split_json_objects(text: str):
+        """把紧密拼接的多个顶层 JSON 对象拆成列表
+        例如: {"a":1}{"b":2} -> ['{"a":1}', '{"b":2}']
+        """
+        results = []
+        depth = 0
+        in_string = False
+        escape = False
+        start = 0
+
+        for i, ch in enumerate(text):
+            if escape:
+                escape = False
+                continue
+            if ch == '\\':
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+
+            if ch == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    results.append(text[start:i + 1])
+
+        return results
+
+    async def _handle_frame(self, text: str):
+        """处理单条 SignalR 帧"""
 
         # --- 2. JSON 解析 ---
         try:
             frame = json.loads(text)
         except json.JSONDecodeError as e:
             logger.error(f"💥 [WS] JSON 解析失败 ip={self._client_ip} "
-                         f"raw={raw_preview} err={e}")
+                         f"raw={text[:300] if text else '(empty)'} err={e}")
             await self._reply_error(f"Invalid JSON: {e}")
             return
 
