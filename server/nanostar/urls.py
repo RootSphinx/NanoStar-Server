@@ -20,7 +20,7 @@ from django.urls import path,include
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path('', include('api.urls')),
+    path('hello/', include('api.urls')),
     
     # 方案 B: 严格按照 RESTful 风格，所有接口和页面都在 /api/ 下
     # 那么前端页面就是 http://127.0.0.1:8000/api/
