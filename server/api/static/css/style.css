@@ -319,3 +319,31 @@ textarea:focus {
     color: var(--text-muted);
     margin-top: 24px;
 }
+
+/* Footer 外部链接 */
+.site-footer {
+    text-align: center;
+    margin-top: 20px;
+    padding: 0 16px 24px;
+}
+
+.footer-row {
+    margin: 4px 0;
+    font-size: 0.75rem;
+}
+
+.footer-row a {
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.footer-row a:hover {
+    color: var(--primary-color);
+}
+
+.footer-sep {
+    color: var(--text-muted);
+    margin: 0 6px;
+    user-select: none;
+}
