@@ -87,7 +87,24 @@ def _resolve_device_address(lat, lng):
 
 def index_page(request):
     """渲染前端网页"""
-    return render(request, 'index.html')
+    footer_links = _load_footer_links()
+    return render(request, 'index.html', {
+        'footer_links': footer_links,
+    })
+
+
+def _load_footer_links():
+    """读取 footer_links.json，解析失败返回空列表"""
+    import os
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'footer_links.json')
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            data = json.loads(f.read())
+        if isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return []
 
 # ==================== 数据库辅助 (异步包装) ====================
 
