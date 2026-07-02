@@ -68,6 +68,19 @@
         </div>
     </div>
 
+    {% if footer_links %}
+    <footer class="site-footer">
+        {% for row in footer_links %}
+        <p class="footer-row">
+            {% for link in row %}
+            <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.text }}</a>
+            {% if not forloop.last %}<span class="footer-sep">·</span>{% endif %}
+            {% endfor %}
+        </p>
+        {% endfor %}
+    </footer>
+    {% endif %}
+
     <script>
         const csrfToken = "{{ csrf_token }}";
     </script>
