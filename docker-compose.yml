@@ -30,6 +30,8 @@ services:
       - TENCENT_MAP_API_KEY=QHABZ-H64CB-HQXUG-NVQJ5-PWYWO-FGBSG
       - IP_API_ENDPOINT=https://uapis.cn/api/v1/network/myip
       - IP_API_KEY=uapi-toxkaqcsejTkBG1XN1INY18GGQ5eiSsOWYiI9pAE
+      - SUPERUSER_USERNAME=admin
+      - SUPERUSER_PASSWORD=adminpassword123
     depends_on:
       - db
       - redis
