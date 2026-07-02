@@ -23,6 +23,7 @@ body, html {
     background: var(--bg-gradient);
     color: var(--text-main);
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     -webkit-tap-highlight-color: transparent;
