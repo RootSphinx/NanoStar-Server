@@ -7,14 +7,15 @@ services:
       MYSQL_ROOT_PASSWORD: nanostar_secret # 生产环境请修改并放入 .env
     volumes:
       - mysql_data:/var/lib/mysql
-    ports:
-      - "3306:3306" # 映射出来方便你用 Navicat 等工具查看
+    command: --performance-schema=OFF --innodb-buffer-pool-size=64M
+#    ports:
+#      - "3306:3306" # 映射出来方便你用 Navicat 等工具查看
 
   redis:
     image: redis:alpine
     restart: always
-    ports:
-      - "6379:6379"
+#    ports:
+#      - "6379:6379"
     volumes:
       - redis_data:/data
 
