@@ -1,3 +1,9 @@
 # Specify filepatterns you want git to ignore.
 
-server/api/__pycache__/
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Claude Code local files
+.claude/
