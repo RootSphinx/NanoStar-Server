@@ -169,6 +169,23 @@ body::before {
     opacity: 0.85;
 }
 
+.success-message-card {
+    margin-top: 12px;
+    margin-bottom: 14px;
+    padding: 12px 18px;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    text-align: center;
+    line-height: 1.7;
+}
+
+.success-message-content {
+    font-size: 14px;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
 /* 历史评论列表 */
 .past-comments {
     margin: 12px 0 16px 0;

@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalVisitorsEl = document.getElementById('total-visitors');
     const pastCommentsEl = document.getElementById('past-comments');
     const pastCommentsList = document.getElementById('past-comments-list');
+    const successMessageEl = document.getElementById('success-message');
 
     const switchView = (hideId, showId) => {
         const hideEl = document.getElementById(hideId);
@@ -103,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleExistingSession(data) {
         const recordStatus = data.status || 'existing';
+        renderSuccessMessage(data.success_message);
         if (recordStatus === 'existing') {
             setCommentTitle('你已经触发过一次啦，是还想再说点什么吗？', '之前的内容都还在呢');
             hideVisitCount();
@@ -204,6 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleVerifySuccess(data) {
         const recordStatus = data.record_status || 'new';
+        renderSuccessMessage(data.success_message);
 
         if (recordStatus === 'new') {
             setCommentTitle('已悄悄通知对方～', '对方知道有人路过啦');
@@ -348,6 +351,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const warnEl = document.getElementById('gps-warning');
             if (warnEl) warnEl.style.display = 'block';
         }
+    }
+
+    function renderSuccessMessage(message) {
+        if (!successMessageEl) return;
+        const contentEl = successMessageEl.querySelector('.success-message-content');
+        if (!message || !message.trim()) {
+            successMessageEl.classList.add('hidden');
+            if (contentEl) contentEl.innerHTML = '';
+            return;
+        }
+        if (contentEl) contentEl.innerHTML = message;
+        successMessageEl.classList.remove('hidden');
     }
 
     function showError(msg) {

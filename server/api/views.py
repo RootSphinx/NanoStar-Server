@@ -15,7 +15,7 @@ from datetime import timedelta
 from channels.db import database_sync_to_async
 from geopy.distance import distance as geopy_distance
 
-from core.models import Device, AppConfig, VisitorRecord, Fingerprint, Comment
+from core.models import Device, AppConfig, VisitorRecord, Fingerprint, Comment, VisitorRecordStatus
 from ws_gateway.command_sender import send_to_device_async
 from ws_gateway.action_router import router
 
@@ -134,11 +134,8 @@ def proxy_ip_location(request):
 
 @database_sync_to_async
 def _get_latest_config():
-    """读取最新 AppConfig"""
-    try:
-        return AppConfig.objects.latest('version_id')
-    except AppConfig.DoesNotExist:
-        return None
+    """读取当前 AppConfig（单例）"""
+    return AppConfig.objects.first()
 
 
 @database_sync_to_async
@@ -154,13 +151,14 @@ def _get_or_create_fingerprint(visitor_id):
 
 @database_sync_to_async
 def _get_latest_record_by_fingerprint(fingerprint_id, cooldown_minutes):
-    """查询指纹在冷却时间内的最新访问记录"""
+    """查询指纹在冷却时间内的最新成功访问记录"""
     if not fingerprint_id or not cooldown_minutes:
         return None
     since = timezone.now() - timedelta(minutes=cooldown_minutes)
     return VisitorRecord.objects.filter(
         fingerprint_id=fingerprint_id,
-        created_at__gte=since
+        created_at__gte=since,
+        status=VisitorRecordStatus.SUCCESS,
     ).order_by('-created_at').first()
 
 
@@ -169,7 +167,10 @@ def _count_successful_visits(fingerprint_id):
     """统计该指纹的成功访问次数"""
     if not fingerprint_id:
         return 0
-    return VisitorRecord.objects.filter(fingerprint_id=fingerprint_id, is_success=True).count()
+    return VisitorRecord.objects.filter(
+        fingerprint_id=fingerprint_id,
+        status=VisitorRecordStatus.SUCCESS,
+    ).count()
 
 
 @database_sync_to_async
@@ -179,7 +180,7 @@ def _count_total_successful_visitors():
 
 
 @database_sync_to_async
-def _create_visitor_record(request_id, ip_address, distance, timestamp, is_success, module,
+def _create_visitor_record(request_id, ip_address, distance, timestamp, status, module,
                            visitor_latitude, visitor_longitude, visitor_address,
                            device_latitude, device_longitude, device_address,
                            fingerprint):
@@ -191,7 +192,7 @@ def _create_visitor_record(request_id, ip_address, distance, timestamp, is_succe
             ip_address=ip_address if ip_address else None,
             distance=distance,
             timestamp=timestamp,
-            is_success=is_success,
+            status=status,
             module=module,
             visitor_latitude=visitor_latitude,
             visitor_longitude=visitor_longitude,
@@ -293,6 +294,7 @@ async def check_visitor_session(request):
     max_comments = config.max_comments_per_record if config else 3
     show_past_comments = config.show_past_comments if config else True
     show_all_history = config.show_all_history if config else False
+    success_message = config.success_message if config else ""
 
     fingerprint = await _get_fingerprint_by_string(visitor_fingerprint)
     existing_record = await _get_latest_record_by_fingerprint(
@@ -336,6 +338,7 @@ async def check_visitor_session(request):
         "max_comments": max_comments,
         "comments_count": comments_count,
         "past_comments": past_comments,
+        "success_message": success_message,
     })
 
 
@@ -358,6 +361,18 @@ async def verify_visitor_click(request):
     # 2. 生成唯一的请求追踪 ID
     request_id = f"req_loc_{uuid.uuid4().hex[:8]}"
 
+    # 公共字段提前准备
+    visitor_ip = data.get('client_ip') or _get_client_ip(request)
+    timestamp_ms = int(time.time() * 1000)
+    fingerprint = await _get_or_create_fingerprint(visitor_fingerprint)
+    config = await _get_latest_config()
+    threshold = config.distance_threshold if config else 500.0
+
+    # 提前解析访客地址，失败分支也需要写入
+    visitor_address = ''
+    if visitor_lat is not None and visitor_lng is not None:
+        visitor_address = await asyncio.to_thread(_resolve_device_address, visitor_lat, visitor_lng)
+
     # 3. 构造下发给手机的指令载荷
     payload = {
         "action": "GET_LOCATION",
@@ -369,12 +384,50 @@ async def verify_visitor_click(request):
     # 4. 动态查找在线设备并发送索要位置的指令
     online_device = await _get_online_device_id()
     if not online_device:
-        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~\n如果你想的话可以提醒他一下"})
+        await _create_visitor_record(
+            request_id=request_id,
+            ip_address=visitor_ip,
+            distance=None,
+            timestamp=timestamp_ms,
+            status=VisitorRecordStatus.DEVICE_OFFLINE,
+            module="tracking",
+            visitor_latitude=visitor_lat,
+            visitor_longitude=visitor_lng,
+            visitor_address=visitor_address,
+            device_latitude=None,
+            device_longitude=None,
+            device_address='',
+            fingerprint=fingerprint,
+        )
+        return JsonResponse({
+            "status": "fail",
+            "msg": "设备不在线，等会儿再试试吧~\n如果你想的话可以提醒他一下",
+            "request_id": request_id,
+        })
 
     sent_success = await send_to_device_async(online_device, payload)
 
     if not sent_success:
-        return JsonResponse({"status": "fail", "msg": "设备不在线，等会儿再试试吧~\n如果你想的话可以提醒他一下"})
+        await _create_visitor_record(
+            request_id=request_id,
+            ip_address=visitor_ip,
+            distance=None,
+            timestamp=timestamp_ms,
+            status=VisitorRecordStatus.DEVICE_OFFLINE,
+            module="tracking",
+            visitor_latitude=visitor_lat,
+            visitor_longitude=visitor_lng,
+            visitor_address=visitor_address,
+            device_latitude=None,
+            device_longitude=None,
+            device_address='',
+            fingerprint=fingerprint,
+        )
+        return JsonResponse({
+            "status": "fail",
+            "msg": "设备不在线，等会儿再试试吧~\n如果你想的话可以提醒他一下",
+            "request_id": request_id,
+        })
 
     # 5. 指令已发出，将请求挂起，循环等待手机把结果写进 Redis
     timeout_seconds = 10
@@ -399,14 +452,19 @@ async def verify_visitor_click(request):
                 except Exception as ex:
                     print(f"⚠️ 距离计算失败: {ex}")
 
-            # 读取阈值，默认 500m
-            config = await _get_latest_config()
-            threshold = config.distance_threshold if config else 500.0
-            is_success = calc_distance is not None and calc_distance <= threshold
+            # 基于枚举的状态判定
+            if visitor_lat is None or visitor_lng is None:
+                status = VisitorRecordStatus.VISITOR_LOCATION_MISSING
+            elif device_lat is None or device_lng is None:
+                status = VisitorRecordStatus.HOST_LOCATION_MISSING
+            elif calc_distance is None:
+                status = VisitorRecordStatus.UNKNOWN_ERROR
+            elif calc_distance > threshold:
+                status = VisitorRecordStatus.DEVICE_TOO_FAR
+            else:
+                status = VisitorRecordStatus.SUCCESS
 
-            # 获取访客 IP：前端 JS 传来的真实公网 IP 优先，Docker 代理头次之
-            visitor_ip = data.get('client_ip') or _get_client_ip(request)
-            timestamp_ms = int(time.time() * 1000)
+            is_success = status == VisitorRecordStatus.SUCCESS
 
             # 逆地理编码：访客地址 + 设备地址
             visitor_address = ''
@@ -417,8 +475,16 @@ async def verify_visitor_click(request):
             if device_lat is not None and device_lng is not None:
                 device_address = await asyncio.to_thread(_resolve_device_address, device_lat, device_lng)
 
-            # 获取或创建指纹
-            fingerprint = await _get_or_create_fingerprint(visitor_fingerprint)
+            # 结构化日志：记录验证结果关键信息
+            print(
+                f"📊 验证结果: req={request_id}, "
+                f"status={status}({dict(VisitorRecordStatus.choices).get(status, status)}), "
+                f"success={is_success}, "
+                f"visitor=({visitor_lat}, {visitor_lng}), "
+                f"device=({device_lat}, {device_lng}), "
+                f"distance={calc_distance}, threshold={threshold}, "
+                f"visitor_addr={visitor_address!r}, device_addr={device_address!r}"
+            )
 
             # 根据指纹 + 冷却时间判断是新记录还是回访
             cooldown_minutes = config.visit_cooldown_minutes if config else 30
@@ -427,6 +493,8 @@ async def verify_visitor_click(request):
             show_all_history = config.show_all_history if config else False
             show_total_visitors = config.show_total_visitors if config else False
             show_first_comments = config.show_first_comments if config else False
+            show_distance_on_failure = config.show_distance_on_failure if config else True
+            success_message = config.success_message if config else ""
 
             existing_record = await _get_latest_record_by_fingerprint(
                 fingerprint.id if fingerprint else None,
@@ -460,7 +528,7 @@ async def verify_visitor_click(request):
                     ip_address=visitor_ip,
                     distance=calc_distance,
                     timestamp=timestamp_ms,
-                    is_success=is_success,
+                    status=status,
                     module="tracking",
                     visitor_latitude=visitor_lat,
                     visitor_longitude=visitor_lng,
@@ -504,7 +572,7 @@ async def verify_visitor_click(request):
                     "request_id": request_id,
                     "title": "✅ 验证成功" if is_success else "❌ 验证失败",
                     "body": notify_body,
-                    "is_success": is_success,
+                    "status": status,
                     "visitor_ip": visitor_ip,
                     "distance": calc_distance if calc_distance is not None else -1,
                     "comment": "",
@@ -523,16 +591,37 @@ async def verify_visitor_click(request):
             cache.delete(result_key)
 
             # 返回前端（包含双方坐标和地址）
-            distance_msg = f"距离 {calc_distance:.1f}m，阈值 {threshold:.0f}m" if calc_distance is not None else "无法计算距离"
-            if not is_success and location_source == 'ip_fallback':
-                distance_msg += "\n打开GPS再试试？"
+            # 1. 确定距离文本
+            distance_line = None
+            if calc_distance is not None:
+                if is_success or show_distance_on_failure:
+                    distance_line = f"当前距离 {calc_distance:.1f}m，阈值 {threshold:.0f}m"
+                else:
+                    distance_line = "当前距离过远"
             else:
-                distance_msg += "\n你在哪里?你真的有看到二维码吗(｡•́︿•̀｡)?"
+                distance_line = "无法获得当前位置"
+
+            # 2. 拼接最终消息
+            if is_success:
+                distance_msg = distance_line or ""
+            else:
+                # 展平判断逻辑，并使用元组赋值精简代码
+                if location_source == 'ip_fallback':
+                    follow_line, separator = "打开GPS再试试？", "\n"
+                elif distance_line == "当前距离过远":
+                    follow_line, separator = "你在哪里?\n你真的有看到二维码吗(｡•́︿•̀｡)?", "，"
+                else:
+                    follow_line, separator = "你在哪里?你真的有看到二维码吗(｡•́︿•̀｡)?", "\n"
+
+                # 这里的拼接保留单行写法，干净利落
+                distance_msg = f"{distance_line}{separator}{follow_line}" if distance_line else follow_line
+
 
             response_data = {
                 "status": "success" if is_success else "fail",
                 "record_status": record_status,
                 "msg": distance_msg,
+                "success_message": success_message if is_success else "",
                 "request_id": request_id,
                 "distance": calc_distance if calc_distance is not None else -1,
                 "visitor_latitude": visitor_lat,
@@ -561,7 +650,26 @@ async def verify_visitor_click(request):
         await asyncio.sleep(0.5)
 
     # 6. 等待超时
-    return JsonResponse({"status": "fail", "msg": "等待手机响应超时，如果你看到他了就去提醒他一下吧"})
+    await _create_visitor_record(
+        request_id=request_id,
+        ip_address=visitor_ip,
+        distance=None,
+        timestamp=timestamp_ms,
+        status=VisitorRecordStatus.HOST_LOCATION_MISSING,
+        module="tracking",
+        visitor_latitude=visitor_lat,
+        visitor_longitude=visitor_lng,
+        visitor_address=visitor_address,
+        device_latitude=None,
+        device_longitude=None,
+        device_address='',
+        fingerprint=fingerprint,
+    )
+    return JsonResponse({
+        "status": "fail",
+        "msg": "等待手机响应超时，如果你看到他了就去提醒他一下吧",
+        "request_id": request_id,
+    })
 
 @csrf_exempt
 async def add_visitor_comment(request):
@@ -604,7 +712,7 @@ async def add_visitor_comment(request):
                         "request_id": req_id,
                         "title": "💬 收到访客留言",
                         "body": comment_text,
-                        "is_success": True,
+                        "status": "success",
                         "visitor_ip": "",
                         "distance": 0,
                         "comment": comment_text,
@@ -660,7 +768,7 @@ async def get_history(request):
             "IpAddress": r.ip_address or "",
             "Distance": r.distance or 0,
             "Timestamp": r.timestamp,
-            "IsSuccess": r.is_success,
+            "Status": r.status,
             "Comment": _get_latest_comment_text(r),
             "Comments": [
                 {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
@@ -748,7 +856,7 @@ async def get_record_detail(request, request_id):
                 "IpAddress":pr.ip_address,
                 "Distance": pr.distance or 0,
                 "Timestamp": pr.timestamp,
-                "IsSuccess": pr.is_success,
+                "Status": pr.status,
                 "VisitorAddress": pr.visitor_address or "",
                 "Comments": [
                     {"content": c.content, "timestamp": c.timestamp, "created_at": c.created_at.isoformat()}
@@ -765,7 +873,7 @@ async def get_record_detail(request, request_id):
             "IpAddress": record.ip_address or "",
             "Distance": record.distance or 0,
             "Timestamp": record.timestamp,
-            "IsSuccess": record.is_success,
+            "Status": record.status,
             "VisitorLatitude": record.visitor_latitude,
             "VisitorLongitude": record.visitor_longitude,
             "VisitorAddress": record.visitor_address or "",

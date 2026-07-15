@@ -65,11 +65,8 @@ async def handle_report_location(consumer, payload: dict):
 
 @database_sync_to_async
 def get_latest_config():
-    """从数据库读取最新配置（按 version_id 降序取第一条）"""
-    try:
-        return AppConfig.objects.latest('version_id')
-    except AppConfig.DoesNotExist:
-        return None
+    """从数据库读取当前配置（单例）"""
+    return AppConfig.objects.first()
 
 
 @router.register("REQUEST_SYNC_CONFIG")

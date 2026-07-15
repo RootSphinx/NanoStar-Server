@@ -1,4 +1,7 @@
 from django.contrib import admin
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+
 from .models import Device, AppConfig, VisitorRecord, Fingerprint, Comment
 
 
@@ -17,7 +20,43 @@ class FingerprintAdmin(admin.ModelAdmin):
 
 @admin.register(AppConfig)
 class AppConfigAdmin(admin.ModelAdmin):
-    list_display = ('version_id', 'is_tracking_enabled', 'distance_threshold', 'visit_cooldown_minutes', 'max_comments_per_record', 'show_past_comments', 'show_all_history', 'show_total_visitors', 'show_first_comments', 'updated_at')
+    list_display = ('version_id', 'is_tracking_enabled', 'distance_threshold', 'visit_cooldown_minutes', 'max_comments_per_record', 'show_past_comments', 'show_all_history', 'show_total_visitors', 'show_first_comments', 'show_distance_on_failure', 'updated_at')
+    fields = (
+        'is_tracking_enabled',
+        'distance_threshold',
+        'visit_cooldown_minutes',
+        'max_comments_per_record',
+        'show_past_comments',
+        'show_all_history',
+        'show_total_visitors',
+        'show_first_comments',
+        'show_distance_on_failure',
+        'success_message',
+    )
+
+    def has_add_permission(self, request):
+        """如果已经存在配置，则禁止添加"""
+        return not AppConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        """禁止删除配置"""
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        """列表页直接跳转到编辑页面"""
+        obj = AppConfig.objects.first()
+        if obj:
+            return HttpResponseRedirect(
+                reverse('admin:core_appconfig_change', args=[obj.pk])
+            )
+        return HttpResponseRedirect(
+            reverse('admin:core_appconfig_add')
+        )
+
+    def save_model(self, request, obj, form, change):
+        """保存设置时清除缓存"""
+        super().save_model(request, obj, form, change)
+        self.message_user(request, '设置已保存，缓存已清除')
 
 
 @admin.register(Comment)
@@ -32,8 +71,8 @@ class CommentAdmin(admin.ModelAdmin):
 
 @admin.register(VisitorRecord)
 class VisitorRecordAdmin(admin.ModelAdmin):
-    list_display = ('request_id', 'fingerprint', 'ip_address', 'distance', 'timestamp', 'is_success', 'module', 'comment_count', 'created_at')
-    list_filter = ('is_success', 'module')
+    list_display = ('request_id', 'fingerprint', 'ip_address', 'distance', 'timestamp', 'status', 'module', 'comment_count', 'created_at')
+    list_filter = ('status', 'module')
     search_fields = ('request_id', 'ip_address', 'fingerprint__visitor_fingerprint')
 
     def comment_count(self, obj):
