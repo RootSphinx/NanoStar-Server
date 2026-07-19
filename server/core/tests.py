@@ -35,6 +35,7 @@ class VisitorRecordStatusTests(TestCase):
         record = VisitorRecord.objects.create(
             request_id='req_status_001',
             timestamp=1234567890000,
+            updated_at=1234567890000,
             status=VisitorRecordStatus.SUCCESS,
         )
         self.assertEqual(record.status, VisitorRecordStatus.SUCCESS)
@@ -44,6 +45,7 @@ class VisitorRecordStatusTests(TestCase):
         record = VisitorRecord.objects.create(
             request_id='req_status_002',
             timestamp=1234567890001,
+            updated_at=1234567890001,
         )
         self.assertEqual(record.status, VisitorRecordStatus.UNKNOWN_ERROR)
 
@@ -55,6 +57,7 @@ class CommentModelTests(TestCase):
             request_id='req_001',
             fingerprint=self.fingerprint,
             timestamp=1234567890000,
+            updated_at=1234567890000,
             status=VisitorRecordStatus.SUCCESS,
         )
 
@@ -93,6 +96,7 @@ class VisitorRecordQueryTests(TestCase):
             request_id='req_002',
             fingerprint=self.fingerprint,
             timestamp=1234567890000,
+            updated_at=1234567890000,
             status=VisitorRecordStatus.SUCCESS,
         )
 
@@ -108,6 +112,7 @@ class VisitorRecordQueryTests(TestCase):
             request_id='req_003',
             fingerprint=self.fingerprint,
             timestamp=1234567890001,
+            updated_at=1234567890001,
             status=VisitorRecordStatus.DEVICE_TOO_FAR,
         )
         count = VisitorRecord.objects.filter(
@@ -124,6 +129,7 @@ class HistoryApiSerializationTests(TestCase):
             request_id='req_history_001',
             fingerprint=self.fingerprint,
             timestamp=1234567890000,
+            updated_at=1234567890000,
             status=VisitorRecordStatus.DEVICE_TOO_FAR,
         )
 
@@ -132,14 +138,17 @@ class HistoryApiSerializationTests(TestCase):
         from django.test import AsyncRequestFactory
         import json
         factory = AsyncRequestFactory()
-        request = factory.get('/api/app/history/', {'module': 'tracking', 'last_sync': '0'})
+        request = factory.get('/api/app/history/', {'module': 'tracking', 'last_updated_at': '0', 'limit': '100'})
         response = await get_history(request)
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
-        self.assertEqual(len(data), 1)
-        self.assertIn('Status', data[0])
-        self.assertNotIn('IsSuccess', data[0])
-        self.assertEqual(data[0]['Status'], VisitorRecordStatus.DEVICE_TOO_FAR)
+        self.assertIn('records', data)
+        self.assertIn('has_more', data)
+        self.assertIn('max_updated_at', data)
+        self.assertEqual(len(data['records']), 1)
+        self.assertIn('Status', data['records'][0])
+        self.assertNotIn('IsSuccess', data['records'][0])
+        self.assertEqual(data['records'][0]['Status'], VisitorRecordStatus.DEVICE_TOO_FAR)
 
 
 class VerifyVisitorClickTests(TestCase):

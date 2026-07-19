@@ -94,6 +94,7 @@ class VisitorRecord(models.Model):
     visitor_address = models.TextField(blank=True, default="", help_text="访客坐标逆地理编码地址")
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.BigIntegerField(db_index=True, help_text="毫秒级时间戳，记录创建时=timestamp，后续更新时刷新")
 
     def __str__(self):
         return f"{self.request_id} - {self.status}"

@@ -192,6 +192,7 @@ def _create_visitor_record(request_id, ip_address, distance, timestamp, status, 
             ip_address=ip_address if ip_address else None,
             distance=distance,
             timestamp=timestamp,
+            updated_at=timestamp,
             status=status,
             module=module,
             visitor_latitude=visitor_latitude,
@@ -233,15 +234,23 @@ def _create_comment(record_id, fingerprint_id, content, timestamp_ms):
 
 
 @database_sync_to_async
-def _get_visitor_records_since(module: str, last_sync: int):
-    """查询 timestamp > last_sync 且 module 匹配的记录，按时间升序"""
-    return list(
+def _get_visitor_records_since(module: str, last_updated_at: int, limit: int):
+    """查询 updated_at > last_updated_at 且 module 匹配的记录，按 updated_at 升序
+
+    使用 N+1 策略：多查一条判断是否还有更多数据。
+    返回 (records, has_more) 元组。
+    """
+    qs = (
         VisitorRecord.objects
-        .filter(timestamp__gt=last_sync, module=module)
+        .filter(updated_at__gt=last_updated_at, module=module)
         .select_related('fingerprint')
         .prefetch_related('comments')
-        .order_by('timestamp')
+        .order_by('updated_at')
     )
+    results = list(qs[:limit + 1])
+    has_more = len(results) > limit
+    records = results[:limit]
+    return records, has_more
 
 
 def _build_comment_list(comments, show_past_comments):
@@ -704,6 +713,10 @@ async def add_visitor_comment(request):
                     timestamp_ms=timestamp_ms,
                 )
 
+                # 刷新访问记录的 updated_at，使增量同步能捕获评论变更
+                record.updated_at = timestamp_ms
+                await database_sync_to_async(record.save)(update_fields=['updated_at'])
+
                 # 仅当留言非空时才推送到在线设备
                 online_device = await _get_online_device_id()
                 if online_device:
@@ -741,25 +754,35 @@ async def add_visitor_comment(request):
 
 
 async def get_history(request):
-    """协议 #4: 手机拉取历史访客记录
+    """协议 #4: 手机拉取历史访客记录（游标分页）
 
-    GET /api/app/history?module=tracking&last_sync={本地最大Timestamp毫秒值}
+    GET /api/app/history?module=tracking&last_updated_at=0&limit=100
 
-    返回 timestamp > last_sync 的记录数组，按时间升序。
-    last_sync 为空库时传 0。
+    返回 updated_at > last_updated_at 的记录，按 updated_at 升序，最多 limit 条。
+    last_updated_at 为空库/首次同步时传 0。
     """
     if request.method != 'GET':
         return JsonResponse({"error": "Method not allowed"}, status=405)
 
     module = request.GET.get('module', 'tracking')
-    last_sync_str = request.GET.get('last_sync', '0')
+    last_updated_at_str = request.GET.get('last_updated_at', '0')
+    limit_str = request.GET.get('limit', '100')
 
     try:
-        last_sync = int(last_sync_str)
+        last_updated_at = int(last_updated_at_str)
     except (ValueError, TypeError):
-        return JsonResponse({"error": "Invalid last_sync"}, status=400)
+        return JsonResponse({"error": "Invalid last_updated_at"}, status=400)
 
-    records = await _get_visitor_records_since(module, last_sync)
+    try:
+        limit = int(limit_str)
+        if limit < 1 or limit > 1000:
+            limit = 100
+    except (ValueError, TypeError):
+        limit = 100
+
+    records, has_more = await _get_visitor_records_since(module, last_updated_at, limit)
+
+    max_updated_at = records[-1].updated_at if records else 0
 
     data = [
         {
@@ -768,6 +791,7 @@ async def get_history(request):
             "IpAddress": r.ip_address or "",
             "Distance": r.distance or 0,
             "Timestamp": r.timestamp,
+            "UpdatedAt": r.updated_at,
             "Status": r.status,
             "Comment": _get_latest_comment_text(r),
             "Comments": [
@@ -784,7 +808,11 @@ async def get_history(request):
         for r in records
     ]
 
-    return JsonResponse(data, safe=False)
+    return JsonResponse({
+        "records": data,
+        "has_more": has_more,
+        "max_updated_at": max_updated_at,
+    })
 
 
 def _get_latest_comment_text(record):

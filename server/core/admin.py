@@ -71,7 +71,7 @@ class CommentAdmin(admin.ModelAdmin):
 
 @admin.register(VisitorRecord)
 class VisitorRecordAdmin(admin.ModelAdmin):
-    list_display = ('request_id', 'fingerprint', 'ip_address', 'distance', 'timestamp', 'status', 'module', 'comment_count', 'created_at')
+    list_display = ('request_id', 'fingerprint', 'ip_address', 'distance', 'timestamp', 'updated_at', 'status', 'module', 'comment_count', 'created_at')
     list_filter = ('status', 'module')
     search_fields = ('request_id', 'ip_address', 'fingerprint__visitor_fingerprint')
 
